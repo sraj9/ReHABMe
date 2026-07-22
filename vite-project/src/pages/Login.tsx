@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { Eye, EyeOff, LogIn } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import { isSupabaseConfigured } from '../lib/supabase'
 
 export default function Login() {
   const { signIn, isAuthenticated } = useAuth()
@@ -45,16 +46,18 @@ export default function Login() {
             <p className="text-sm text-gray-500 mt-1">Sign in to ReHABMe CRM</p>
           </div>
 
-          {/* Demo credentials note */}
-          <div className="bg-[#3d9cd6]/10 border border-[#3d9cd6]/20 rounded-xl px-4 py-3 mb-6">
-            <p className="text-xs font-medium text-[#3d9cd6] mb-1">Demo Credentials</p>
-            <p className="text-xs text-gray-600">
-              Email: <span className="font-mono font-semibold">admin@rehabme.com</span>
-            </p>
-            <p className="text-xs text-gray-600">
-              Password: <span className="font-mono font-semibold">demo1234</span>
-            </p>
-          </div>
+          {/* Demo credentials note — only relevant when no real Supabase is configured */}
+          {!isSupabaseConfigured && (
+            <div className="bg-[#3d9cd6]/10 border border-[#3d9cd6]/20 rounded-xl px-4 py-3 mb-6">
+              <p className="text-xs font-medium text-[#3d9cd6] mb-1">Demo Credentials</p>
+              <p className="text-xs text-gray-600">
+                Email: <span className="font-mono font-semibold">admin@rehabme.com</span>
+              </p>
+              <p className="text-xs text-gray-600">
+                Password: <span className="font-mono font-semibold">demo1234</span>
+              </p>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
