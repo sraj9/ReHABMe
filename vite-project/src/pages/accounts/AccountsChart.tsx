@@ -48,7 +48,10 @@ function niceCeil(value: number): number {
 
 function compactRupees(value: number): string {
   if (value >= 100000) return `₹${(value / 100000).toFixed(value % 100000 === 0 ? 0 : 1)}L`
-  if (value >= 1000) return `₹${Math.round(value / 1000)}k`
+  if (value >= 1000) {
+    const thousands = value / 1000
+    return `₹${Number.isInteger(thousands) ? thousands : thousands.toFixed(1)}k`
+  }
   return `₹${value}`
 }
 
