@@ -24,7 +24,7 @@ export default function Dashboard() {
   const [showPicker, setShowPicker] = useState(false)
   const [paymentTarget, setPaymentTarget] = useState<Invoice | null>(null)
 
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const { patients } = usePatientsContext()
   const { appointments } = useAppointmentsContext()
   const { notes } = useNotesContext()
@@ -33,7 +33,7 @@ export default function Dashboard() {
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
-  const userName = (user?.user_metadata?.full_name as string | undefined) || user?.email?.split('@')[0] || 'there'
+  const userName = profile?.full_name || (user?.user_metadata?.full_name as string | undefined) || user?.email?.split('@')[0] || 'there'
 
   const todaysAppointments = appointments.filter(a => a.appointment_date === today)
   const pendingInvoices = invoices.filter(i => i.status === 'sent' || i.status === 'overdue')
