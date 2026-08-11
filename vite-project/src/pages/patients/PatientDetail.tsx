@@ -13,8 +13,19 @@ import { usePatientsContext } from '../../context/PatientsContext'
 import { useAppointmentsContext } from '../../context/AppointmentsContext'
 import { useNotesContext } from '../../context/NotesContext'
 import { useInvoicesContext } from '../../context/InvoicesContext'
+import { usePaymentsContext } from '../../context/PaymentsContext'
 import { formatCurrency } from '../../lib/format'
+import { invoiceBalance } from '../../lib/ledger'
 import PainTrendChart from './PainTrendChart'
+import type { PaymentMethod } from '../../lib/types'
+
+const paymentMethodLabels: Record<PaymentMethod, string> = {
+  cash: 'Cash',
+  upi: 'UPI',
+  card: 'Card',
+  bank_transfer: 'Bank Transfer',
+  other: 'Other',
+}
 
 export default function PatientDetail() {
   const { id } = useParams<{ id: string }>()
@@ -25,11 +36,20 @@ export default function PatientDetail() {
   const { appointments } = useAppointmentsContext()
   const { notes } = useNotesContext()
   const { invoices } = useInvoicesContext()
+  const { payments } = usePaymentsContext()
 
   const patient = patients.find(p => p.id === id)
   const patientAppointments = appointments.filter(a => a.patient_id === id)
   const patientNotes = notes.filter(n => n.patient_id === id)
   const patientInvoices = invoices.filter(i => i.patient_id === id)
+  const patientPayments = payments.filter(p => p.patient_id === id)
+
+  // Ledger totals: drafts are not yet owed, so bill only issued invoices
+  const totalBilled = patientInvoices.filter(i => i.status !== 'draft').reduce((s, i) => s + i.total_amount, 0)
+  const totalReceived = patientPayments.reduce((s, p) => s + p.amount, 0)
+  const totalBalance = patientInvoices
+    .filter(i => i.status !== 'draft' && i.status !== 'paid')
+    .reduce((s, i) => s + invoiceBalance(i, payments), 0)
 
   if (!patient) {
     return (
@@ -341,6 +361,21 @@ export default function PatientDetail() {
 
       {/* Billing tab */}
       {activeTab === 'billing' && (
+        <div className="space-y-5">
+        {/* Ledger summary */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {[
+            { label: 'Total Billed', value: totalBilled, color: 'text-gray-900' },
+            { label: 'Received', value: totalReceived, color: 'text-green-600' },
+            { label: 'Balance Due', value: totalBalance, color: totalBalance > 0 ? 'text-red-600' : 'text-gray-900' },
+          ].map(item => (
+            <Card key={item.label}>
+              <p className="text-xs text-gray-500">{item.label}</p>
+              <p className={`text-xl font-bold mt-1 ${item.color}`}>{formatCurrency(item.value)}</p>
+            </Card>
+          ))}
+        </div>
+
         <Card padding="none">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-900">Invoice History</h3>
@@ -367,6 +402,33 @@ export default function PatientDetail() {
             </div>
           )}
         </Card>
+
+        {/* Payment history */}
+        <Card padding="none">
+          <div className="px-5 py-4 border-b border-gray-100">
+            <h3 className="text-sm font-semibold text-gray-900">Payment History</h3>
+          </div>
+          {patientPayments.length === 0 ? (
+            <div className="py-10 text-center text-sm text-gray-500">No payments recorded</div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {patientPayments.map(payment => (
+                <div key={payment.id} className="px-5 py-3.5 flex items-center gap-4">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900">{formatCurrency(payment.amount)} — {paymentMethodLabels[payment.method]}</p>
+                    <p className="text-xs text-gray-500">
+                      {format(parseISO(payment.paid_at), 'MMM d, yyyy')}
+                      {payment.invoice?.invoice_number ? ` • ${payment.invoice.invoice_number}` : ''}
+                      {payment.notes ? ` • ${payment.notes}` : ''}
+                    </p>
+                  </div>
+                  <Badge variant="success" size="sm">received</Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+        </div>
       )}
     </div>
   )

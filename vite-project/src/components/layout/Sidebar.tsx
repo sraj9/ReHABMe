@@ -5,9 +5,11 @@ import {
   CalendarDays,
   FileText,
   Receipt,
+  Wallet,
   Settings,
   ChevronRight,
 } from 'lucide-react'
+import { useAuth } from '../../hooks/useAuth'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', exact: true },
@@ -15,6 +17,7 @@ const navItems = [
   { to: '/appointments', icon: CalendarDays, label: 'Appointments' },
   { to: '/notes', icon: FileText, label: 'SOAP Notes' },
   { to: '/billing', icon: Receipt, label: 'Billing' },
+  { to: '/accounts', icon: Wallet, label: 'Accounts', adminOnly: true },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]
 
@@ -24,6 +27,8 @@ interface SidebarProps {
 
 export default function Sidebar({ collapsed = false }: SidebarProps) {
   const location = useLocation()
+  const { profile } = useAuth()
+  const visibleItems = navItems.filter(item => !item.adminOnly || profile?.role === 'admin')
 
   return (
     <aside
@@ -50,7 +55,7 @@ export default function Sidebar({ collapsed = false }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
-        {navItems.map(({ to, icon: Icon, label, exact }) => {
+        {visibleItems.map(({ to, icon: Icon, label, exact }) => {
           const isActive = exact
             ? location.pathname === to
             : location.pathname.startsWith(to)

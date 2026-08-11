@@ -148,6 +148,38 @@ export interface Invoice {
   appointment?: Appointment
 }
 
+export type PaymentMethod = 'cash' | 'upi' | 'card' | 'bank_transfer' | 'other'
+export type ExpenseCategory = 'rent' | 'salaries' | 'equipment' | 'supplies' | 'utilities' | 'maintenance' | 'other'
+
+export interface Payment {
+  id: string
+  invoice_id: string
+  patient_id: string
+  amount: number
+  method: PaymentMethod
+  paid_at: string
+  notes?: string
+  received_by?: string
+  created_at: string
+  // Joined fields
+  patient?: Patient
+  invoice?: Invoice
+  receiver?: StaffProfile
+}
+
+export interface Expense {
+  id: string
+  category: ExpenseCategory
+  description: string
+  amount: number
+  expense_date: string
+  recorded_by?: string
+  created_at: string
+  updated_at: string
+  // Joined fields
+  recorder?: StaffProfile
+}
+
 export interface DashboardStats {
   total_patients: number
   todays_appointments: number

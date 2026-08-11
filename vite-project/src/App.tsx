@@ -8,6 +8,8 @@ import { AppointmentsProvider } from './context/AppointmentsContext'
 import { NotesProvider } from './context/NotesContext'
 import { InvoicesProvider } from './context/InvoicesContext'
 import { AttendanceProvider } from './context/AttendanceContext'
+import { PaymentsProvider } from './context/PaymentsContext'
+import { ExpensesProvider } from './context/ExpensesContext'
 
 // Layout
 import Layout from './components/layout/Layout'
@@ -22,6 +24,7 @@ import PatientForm from './pages/patients/PatientForm'
 import AppointmentList from './pages/appointments/AppointmentList'
 import NotesList from './pages/notes/NotesList'
 import InvoiceList from './pages/billing/InvoiceList'
+import Accounts from './pages/accounts/Accounts'
 import Settings from './pages/settings/Settings'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -82,6 +85,9 @@ function AppRoutes() {
         {/* Billing */}
         <Route path="billing" element={<InvoiceList />} />
 
+        {/* Accounts (admin) */}
+        <Route path="accounts" element={<Accounts />} />
+
         {/* Settings */}
         <Route path="settings" element={<Settings />} />
       </Route>
@@ -112,7 +118,11 @@ export default function App() {
               <NotesProvider>
                 <InvoicesProvider>
                   <AttendanceProvider>
-                    <AppRoutes />
+                    <PaymentsProvider>
+                      <ExpensesProvider>
+                        <AppRoutes />
+                      </ExpensesProvider>
+                    </PaymentsProvider>
                   </AttendanceProvider>
                 </InvoicesProvider>
               </NotesProvider>

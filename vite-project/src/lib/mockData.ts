@@ -1,4 +1,4 @@
-import type { Patient, Appointment, SOAPNote, Invoice, InvoiceItem, StaffProfile, RecentActivity } from './types'
+import type { Patient, Appointment, SOAPNote, Invoice, InvoiceItem, StaffProfile, RecentActivity, Payment, Expense } from './types'
 
 export const mockStaff: StaffProfile[] = [
   {
@@ -548,5 +548,72 @@ export const mockRecentActivity: RecentActivity[] = [
     description: 'Appointment scheduled for Sarah Thompson',
     timestamp: '2026-05-17T16:00:00Z',
     user_name: 'Mr. Carlos Rivera',
+  },
+]
+
+export const mockPayments: Payment[] = [
+  {
+    id: 'pay-1',
+    invoice_id: 'inv-1',
+    patient_id: 'pat-1',
+    amount: 735,
+    method: 'upi',
+    paid_at: '2026-05-10',
+    notes: 'Paid in full',
+    received_by: 'staff-1',
+    created_at: '2026-05-10T10:15:00Z',
+    patient: mockPatients[0],
+    invoice: mockInvoices[0],
+    receiver: mockStaff[0],
+  },
+  {
+    id: 'pay-2',
+    invoice_id: 'inv-2',
+    patient_id: 'pat-2',
+    amount: 400,
+    method: 'cash',
+    paid_at: '2026-05-15',
+    notes: 'Partial payment',
+    received_by: 'staff-1',
+    created_at: '2026-05-15T11:30:00Z',
+    patient: mockPatients[1],
+    invoice: mockInvoices[1],
+    receiver: mockStaff[0],
+  },
+]
+
+export const mockExpenses: Expense[] = [
+  {
+    id: 'exp-1',
+    category: 'rent',
+    description: 'Clinic rent — May',
+    amount: 45000,
+    expense_date: '2026-05-01',
+    recorded_by: 'staff-1',
+    created_at: '2026-05-01T09:00:00Z',
+    updated_at: '2026-05-01T09:00:00Z',
+    recorder: mockStaff[0],
+  },
+  {
+    id: 'exp-2',
+    category: 'supplies',
+    description: 'Resistance bands and therapy putty restock',
+    amount: 6800,
+    expense_date: '2026-05-08',
+    recorded_by: 'staff-1',
+    created_at: '2026-05-08T14:00:00Z',
+    updated_at: '2026-05-08T14:00:00Z',
+    recorder: mockStaff[0],
+  },
+  {
+    id: 'exp-3',
+    category: 'utilities',
+    description: 'Electricity bill — April',
+    amount: 9200,
+    expense_date: '2026-05-12',
+    recorded_by: 'staff-1',
+    created_at: '2026-05-12T10:00:00Z',
+    updated_at: '2026-05-12T10:00:00Z',
+    recorder: mockStaff[0],
   },
 ]

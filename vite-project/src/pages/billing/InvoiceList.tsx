@@ -8,10 +8,13 @@ import Button from '../../components/ui/Button'
 import StatCard from '../../components/ui/StatCard'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import Pagination from '../../components/ui/Pagination'
+import RecordPaymentModal from '../../components/RecordPaymentModal'
 import { useInvoicesContext } from '../../context/InvoicesContext'
 import { usePatientsContext } from '../../context/PatientsContext'
+import { usePaymentsContext } from '../../context/PaymentsContext'
 import { useToast } from '../../context/ToastContext'
 import { formatCurrency } from '../../lib/format'
+import { invoiceBalance, paidForInvoice } from '../../lib/ledger'
 import { printInvoice } from '../../lib/invoicePrint'
 import type { Invoice, InvoiceStatus } from '../../lib/types'
 
@@ -27,6 +30,8 @@ export default function InvoiceList() {
   const [showForm, setShowForm] = useState(() => searchParams.get('new') === '1')
   const [page, setPage] = useState(1)
   const [deleteTarget, setDeleteTarget] = useState<Invoice | null>(null)
+  const [paymentTarget, setPaymentTarget] = useState<Invoice | null>(null)
+  const { payments } = usePaymentsContext()
   const [prefillPatientId, setPrefillPatientId] = useState<string | undefined>(() =>
     searchParams.get('new') === '1' ? searchParams.get('patient') ?? undefined : undefined
   )
@@ -208,6 +213,9 @@ export default function InvoiceList() {
                       {inv.discount_amount > 0 && (
                         <p className="text-xs text-green-600">-{formatCurrency(inv.discount_amount)} disc</p>
                       )}
+                      {inv.status !== 'paid' && paidForInvoice(inv.id, payments) > 0 && (
+                        <p className="text-xs text-amber-600">{formatCurrency(invoiceBalance(inv, payments))} due</p>
+                      )}
                     </td>
                     <td className="px-5 py-3.5">
                       <select
@@ -226,9 +234,19 @@ export default function InvoiceList() {
                         <Badge variant={getInvoiceStatusBadge(inv.status)} dot>
                           {inv.status}
                         </Badge>
+                        {inv.status !== 'paid' && (
+                          <button
+                            onClick={() => setPaymentTarget(inv)}
+                            className="p-1 text-gray-400 hover:text-green-600 transition-colors rounded ml-1"
+                            title="Record payment"
+                            aria-label="Record payment"
+                          >
+                            <IndianRupee size={13} />
+                          </button>
+                        )}
                         <button
                           onClick={() => handlePrint(inv)}
-                          className="p-1 text-gray-400 hover:text-[#3d9cd6] transition-colors rounded ml-1"
+                          className="p-1 text-gray-400 hover:text-[#3d9cd6] transition-colors rounded"
                           title="Print / save as PDF"
                           aria-label="Print invoice"
                         >
@@ -253,6 +271,11 @@ export default function InvoiceList() {
 
         <Pagination page={currentPage} pageSize={PAGE_SIZE} total={filtered.length} onPageChange={setPage} label="invoices" />
       </Card>
+
+      {/* Record payment */}
+      {paymentTarget && (
+        <RecordPaymentModal invoice={paymentTarget} onClose={() => setPaymentTarget(null)} />
+      )}
 
       {/* Delete confirmation */}
       <ConfirmDialog
