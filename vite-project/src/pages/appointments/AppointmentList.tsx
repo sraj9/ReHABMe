@@ -121,8 +121,8 @@ export default function AppointmentList() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-3">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex gap-2 sm:gap-3 flex-wrap">
           {(['all', 'scheduled', 'completed', 'cancelled', 'no-show'] as const).map(status => (
             <button
               key={status}
@@ -136,7 +136,7 @@ export default function AppointmentList() {
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
             <button
               onClick={() => setView('list')}

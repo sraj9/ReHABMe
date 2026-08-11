@@ -40,8 +40,8 @@ export default function PatientList() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
           <p className="text-sm text-gray-500">{patients.length} total patients registered</p>
           <span className="flex items-center gap-1 text-xs text-gray-500"><UserCheck size={12} className="text-green-500" /> {patients.filter(p => p.is_active).length} active</span>
           <span className="flex items-center gap-1 text-xs text-gray-500"><UserX size={12} className="text-gray-400" /> {patients.filter(p => !p.is_active).length} inactive</span>

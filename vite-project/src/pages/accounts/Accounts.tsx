@@ -11,6 +11,7 @@ import StatCard from '../../components/ui/StatCard'
 import Pagination from '../../components/ui/Pagination'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import RecordPaymentModal from '../../components/RecordPaymentModal'
+import InvoicePickerModal from '../../components/InvoicePickerModal'
 import AccountsChart, { type MonthlyMoney } from './AccountsChart'
 import { usePaymentsContext } from '../../context/PaymentsContext'
 import { useExpensesContext } from '../../context/ExpensesContext'
@@ -189,8 +190,6 @@ function PaymentsTab() {
   const currentPage = Math.min(page, pageCount)
   const paged = payments.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
-  const openInvoices = invoices.filter(i => i.status !== 'paid' && invoiceBalance(i, payments) > 0)
-
   return (
     <div className="space-y-5">
       <div className="flex justify-end">
@@ -250,34 +249,10 @@ function PaymentsTab() {
 
       {/* Pick an open invoice, then record against it */}
       {showPicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowPicker(false)} />
-          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h2 className="text-lg font-semibold text-gray-900">Select Invoice</h2>
-              <button onClick={() => setShowPicker(false)} aria-label="Close dialog" className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">✕</button>
-            </div>
-            <div className="max-h-96 overflow-y-auto divide-y divide-gray-50">
-              {openInvoices.length === 0 ? (
-                <p className="px-6 py-10 text-center text-sm text-gray-500">No invoices with an outstanding balance</p>
-              ) : (
-                openInvoices.map(invoice => (
-                  <button
-                    key={invoice.id}
-                    onClick={() => { setShowPicker(false); setPaymentTarget(invoice) }}
-                    className="w-full px-6 py-3 flex items-center justify-between hover:bg-gray-50 text-left"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold text-[#3d9cd6]">{invoice.invoice_number}</p>
-                      <p className="text-xs text-gray-500">{invoice.patient?.full_name}</p>
-                    </div>
-                    <p className="text-sm font-semibold text-gray-900">{formatCurrency(invoiceBalance(invoice, payments))} due</p>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
+        <InvoicePickerModal
+          onClose={() => setShowPicker(false)}
+          onSelect={invoice => { setShowPicker(false); setPaymentTarget(invoice) }}
+        />
       )}
 
       {paymentTarget && (

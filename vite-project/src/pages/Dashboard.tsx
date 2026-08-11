@@ -1,9 +1,12 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
-import { Users, CalendarDays, Receipt, TrendingUp, Clock, CheckCircle, AlertCircle, Activity } from 'lucide-react'
+import { Users, CalendarDays, Receipt, TrendingUp, Clock, CheckCircle, AlertCircle, Activity, IndianRupee } from 'lucide-react'
 import StatCard from '../components/ui/StatCard'
 import Card, { CardHeader } from '../components/ui/Card'
 import Badge, { getAppointmentStatusBadge } from '../components/ui/Badge'
+import RecordPaymentModal from '../components/RecordPaymentModal'
+import InvoicePickerModal from '../components/InvoicePickerModal'
 import { formatCurrency } from '../lib/format'
 import { deriveRecentActivity } from '../lib/activity'
 import { useAuth } from '../hooks/useAuth'
@@ -13,10 +16,13 @@ import { useNotesContext } from '../context/NotesContext'
 import { useInvoicesContext } from '../context/InvoicesContext'
 import { usePaymentsContext } from '../context/PaymentsContext'
 import { invoiceBalance, effectivePayments } from '../lib/ledger'
+import type { Invoice } from '../lib/types'
 
 export default function Dashboard() {
   const navigate = useNavigate()
   const today = format(new Date(), 'yyyy-MM-dd')
+  const [showPicker, setShowPicker] = useState(false)
+  const [paymentTarget, setPaymentTarget] = useState<Invoice | null>(null)
 
   const { user } = useAuth()
   const { patients } = usePatientsContext()
@@ -68,17 +74,21 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Welcome banner */}
-      <div className="bg-gradient-to-r from-[#3d9cd6] to-[#1e7ab4] rounded-2xl p-6 text-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold">{greeting}, {userName}!</h2>
+      <div className="bg-gradient-to-r from-[#3d9cd6] to-[#1e7ab4] rounded-2xl p-5 sm:p-6 text-white">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <h2 className="text-lg sm:text-xl font-bold">{greeting}, {userName}!</h2>
             <p className="text-blue-100 text-sm mt-1">
               {format(new Date(), 'EEEE, MMMM d, yyyy')} &mdash; You have {todaysAppointments.filter(a => a.status === 'scheduled').length} appointments scheduled today
             </p>
           </div>
-          <div className="hidden sm:block">
-            <img src="/logo.svg" alt="" className="h-16 w-auto opacity-30 object-contain" />
-          </div>
+          <button
+            onClick={() => setShowPicker(true)}
+            className="flex items-center gap-2 bg-white text-[#1e7ab4] hover:bg-blue-50 font-medium text-sm px-4 py-2.5 rounded-xl shadow-sm transition-colors flex-shrink-0"
+          >
+            <IndianRupee size={16} />
+            Payment Received
+          </button>
         </div>
       </div>
 
@@ -280,6 +290,17 @@ export default function Dashboard() {
             ))}
           </div>
         </Card>
+      )}
+
+      {/* Quick payment entry */}
+      {showPicker && (
+        <InvoicePickerModal
+          onClose={() => setShowPicker(false)}
+          onSelect={invoice => { setShowPicker(false); setPaymentTarget(invoice) }}
+        />
+      )}
+      {paymentTarget && (
+        <RecordPaymentModal invoice={paymentTarget} onClose={() => setPaymentTarget(null)} />
       )}
     </div>
   )

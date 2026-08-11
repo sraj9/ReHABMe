@@ -128,8 +128,8 @@ export default function InvoiceList() {
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-2">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex gap-2 flex-wrap">
           {(['all', 'draft', 'sent', 'paid', 'overdue'] as const).map(status => (
             <button
               key={status}

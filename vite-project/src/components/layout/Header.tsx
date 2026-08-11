@@ -144,9 +144,9 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
   const userInitials = userName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
 
   return (
-    <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-5 flex-shrink-0">
+    <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between gap-2 px-3 sm:px-5 flex-shrink-0">
       {/* Left */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
         <button
           onClick={onToggleSidebar}
           className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
@@ -154,11 +154,11 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
         >
           <Menu size={18} />
         </button>
-        <h1 className="text-lg font-semibold text-gray-900">{pageTitle}</h1>
+        <h1 className="text-base sm:text-lg font-semibold text-gray-900 truncate">{pageTitle}</h1>
       </div>
 
       {/* Right */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
         {/* Attendance check-in / check-out — staff only, admins don't clock in */}
         {profile?.role !== 'admin' && (
         <button
