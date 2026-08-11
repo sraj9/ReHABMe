@@ -9,3 +9,6 @@
 
 # Node (root-level strays)
 node_modules/
+
+# Supabase CLI temp
+supabase/.temp/

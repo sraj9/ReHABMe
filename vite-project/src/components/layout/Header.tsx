@@ -159,7 +159,8 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
 
       {/* Right */}
       <div className="flex items-center gap-2">
-        {/* Attendance check-in / check-out */}
+        {/* Attendance check-in / check-out — staff only, admins don't clock in */}
+        {profile?.role !== 'admin' && (
         <button
           onClick={handleCheckInOut}
           disabled={locating}
@@ -173,6 +174,7 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
           <MapPin size={13} />
           {locating ? 'Getting location…' : openSession ? 'Check Out' : 'Check In'}
         </button>
+        )}
 
         {/* Notifications */}
         <div className="relative">

@@ -71,28 +71,7 @@ function StaffTab({ isAdmin }: { isAdmin: boolean }) {
   const [editTarget, setEditTarget] = useState<StaffProfile | null>(null)
   const [resetTarget, setResetTarget] = useState<StaffProfile | null>(null)
   const [resetResult, setResetResult] = useState<{ name: string; password: string; whatsappSent: boolean; whatsappError?: string } | null>(null)
-  const [resetting, setResetting] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<StaffProfile | null>(null)
-
-  const confirmResetPassword = async () => {
-    if (!resetTarget) return
-    setResetting(true)
-    const result = await staffAdmin({ action: 'reset_password', profile_id: resetTarget.id })
-    setResetting(false)
-    const name = resetTarget.full_name
-    setResetTarget(null)
-    if (!result.ok || !result.temp_password) {
-      toast.error(result.error ?? 'Could not reset the password')
-      return
-    }
-    await refresh()
-    setResetResult({
-      name,
-      password: result.temp_password,
-      whatsappSent: !!result.whatsapp_sent,
-      whatsappError: result.whatsapp_error,
-    })
-  }
 
   const confirmDelete = async () => {
     if (!deleteTarget) return
@@ -198,14 +177,17 @@ function StaffTab({ isAdmin }: { isAdmin: boolean }) {
         />
       )}
 
-      <ConfirmDialog
-        open={!!resetTarget}
-        title="Reset password?"
-        message={`${resetTarget?.full_name ?? ''} will get a new temporary password (sent via WhatsApp when configured) and must choose a new one at next login.`}
-        confirmLabel={resetting ? 'Resetting…' : 'Reset password'}
-        onConfirm={confirmResetPassword}
-        onCancel={() => setResetTarget(null)}
-      />
+      {resetTarget && (
+        <ResetPasswordModal
+          member={resetTarget}
+          onClose={() => setResetTarget(null)}
+          onDone={async result => {
+            setResetTarget(null)
+            await refresh()
+            setResetResult(result)
+          }}
+        />
+      )}
 
       <ConfirmDialog
         open={!!deleteTarget}
@@ -237,7 +219,8 @@ interface InviteStaffModalProps {
 
 function InviteStaffModal({ onClose, addStaffLocally, refresh }: InviteStaffModalProps) {
   const toast = useToast()
-  const [form, setForm] = useState({ full_name: '', phone: '+91', email: '', role: 'therapist' as UserRole, specialty: '' })
+  const [form, setForm] = useState({ full_name: '', phone: '+91', email: '', role: 'therapist' as UserRole, specialty: '', password: '' })
+  const [sendWhatsApp, setSendWhatsApp] = useState(true)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [sending, setSending] = useState(false)
   const [result, setResult] = useState<{ password: string; whatsappSent: boolean; whatsappError?: string } | null>(null)
@@ -247,6 +230,7 @@ function InviteStaffModal({ onClose, addStaffLocally, refresh }: InviteStaffModa
     if (!form.full_name.trim()) errs.full_name = 'Name is required'
     if (!/^\+\d{8,15}$/.test(form.phone.replace(/[\s-]/g, ''))) errs.phone = 'Use international format, e.g. +919876543210'
     if (form.email.trim() && !/^\S+@\S+\.\S+$/.test(form.email.trim())) errs.email = 'Enter a valid email or leave it empty'
+    if (form.password && form.password.length < 8) errs.password = 'At least 8 characters, or leave empty to auto-generate'
     setErrors(errs)
     return Object.keys(errs).length === 0
   }
@@ -283,6 +267,8 @@ function InviteStaffModal({ onClose, addStaffLocally, refresh }: InviteStaffModa
       email: form.email.trim() || null,
       role: form.role,
       specialty: form.specialty.trim() || null,
+      password: form.password || null,
+      send_whatsapp: sendWhatsApp,
     })
     setSending(false)
     if (!response.ok || !response.temp_password) {
@@ -314,7 +300,7 @@ function InviteStaffModal({ onClose, addStaffLocally, refresh }: InviteStaffModa
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">Invite Staff Member</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Add Staff Member</h2>
           <button onClick={onClose} aria-label="Close dialog" className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">✕</button>
         </div>
         <div className="px-6 py-5 space-y-4">
@@ -352,11 +338,21 @@ function InviteStaffModal({ onClose, addStaffLocally, refresh }: InviteStaffModa
               <input id="invite-specialty" className={fieldClass} value={form.specialty} onChange={e => setForm(f => ({ ...f, specialty: e.target.value }))} placeholder="Physiotherapy" />
             </div>
           </div>
+          <div>
+            <label htmlFor="invite-password" className={labelClass}>Password (optional)</label>
+            <input id="invite-password" type="text" autoComplete="off" className={fieldClass} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="Leave empty to auto-generate" />
+            {errors.password && <p className="text-xs text-red-500 mt-1">{errors.password}</p>}
+            <p className="text-xs text-gray-400 mt-1">Auto-generated passwords must be changed at first login; a password you set here is final.</p>
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={sendWhatsApp} onChange={e => setSendWhatsApp(e.target.checked)} className="rounded border-gray-300 accent-[#3d9cd6]" />
+            <span className="text-sm text-gray-700">Send credentials via WhatsApp</span>
+          </label>
         </div>
         <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button loading={sending} icon={<Send size={14} />} onClick={handleInvite}>
-            Create & Send Invite
+            Create Account
           </Button>
         </div>
       </div>
@@ -391,7 +387,7 @@ function CredentialsModal({ title, password, whatsappSent, whatsappError, onClos
             <p className="text-xs text-gray-500 mb-1">Temporary password</p>
             <p className="font-mono text-lg font-bold text-gray-900 tracking-wide">{password}</p>
           </div>
-          <p className="text-xs text-gray-400 mt-2">They must change it at first login.</p>
+          <p className="text-xs text-gray-400 mt-2">Auto-generated passwords must be changed at first login.</p>
           <div className="flex gap-2 mt-5">
             <Button
               variant="outline"
@@ -401,6 +397,80 @@ function CredentialsModal({ title, password, whatsappSent, whatsappError, onClos
             </Button>
             <Button onClick={onClose}>Done</Button>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface ResetPasswordModalProps {
+  member: StaffProfile
+  onClose: () => void
+  onDone: (result: { name: string; password: string; whatsappSent: boolean; whatsappError?: string }) => Promise<void>
+}
+
+function ResetPasswordModal({ member, onClose, onDone }: ResetPasswordModalProps) {
+  const toast = useToast()
+  const [password, setPassword] = useState('')
+  const [sendWhatsApp, setSendWhatsApp] = useState(true)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const handleReset = async () => {
+    if (password && password.length < 8) {
+      setError('At least 8 characters, or leave empty to auto-generate')
+      return
+    }
+    setSaving(true)
+    setError('')
+    const result = await staffAdmin({
+      action: 'reset_password',
+      profile_id: member.id,
+      password: password || null,
+      send_whatsapp: sendWhatsApp,
+    })
+    setSaving(false)
+    if (!result.ok || !result.temp_password) {
+      toast.error(result.error ?? 'Could not reset the password')
+      return
+    }
+    await onDone({
+      name: member.full_name,
+      password: result.temp_password,
+      whatsappSent: !!result.whatsapp_sent,
+      whatsappError: result.whatsapp_error,
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-lg font-semibold text-gray-900">Reset Password — {member.full_name}</h2>
+          <button onClick={onClose} aria-label="Close dialog" className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">✕</button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              <p className="text-xs text-red-600">{error}</p>
+            </div>
+          )}
+          <div>
+            <label htmlFor="reset-password" className={labelClass}>New Password (optional)</label>
+            <input id="reset-password" type="text" autoComplete="off" className={fieldClass} value={password} onChange={e => setPassword(e.target.value)} placeholder="Leave empty to auto-generate" />
+            <p className="text-xs text-gray-400 mt-1">Auto-generated passwords must be changed at next login; a password you set here is final.</p>
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={sendWhatsApp} onChange={e => setSendWhatsApp(e.target.checked)} className="rounded border-gray-300 accent-[#3d9cd6]" />
+            <span className="text-sm text-gray-700">Send new credentials via WhatsApp</span>
+          </label>
+        </div>
+        <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button loading={saving} icon={<KeyRound size={14} />} onClick={handleReset}>
+            Reset Password
+          </Button>
         </div>
       </div>
     </div>

@@ -140,7 +140,14 @@ Deno.serve(async req => {
       return json(400, { error: 'Phone must be in international format, e.g. +919876543210' })
     }
 
-    const password = generatePassword()
+    // Admin may set the password directly; otherwise one is generated and
+    // the staff member must change it at first login.
+    const customPassword = typeof body.password === 'string' && body.password.length > 0 ? body.password : null
+    if (customPassword && customPassword.length < 8) {
+      return json(400, { error: 'Password must be at least 8 characters' })
+    }
+    const password = customPassword ?? generatePassword()
+    const sendWhatsApp = body.send_whatsapp !== false
     const { data: created, error: createError } = await admin.auth.admin.createUser({
       phone: phone.replace(/[\s-]/g, ''),
       password,
@@ -161,7 +168,7 @@ Deno.serve(async req => {
         phone,
         role,
         specialty,
-        must_change_password: true,
+        must_change_password: !customPassword,
       })
       .select('*')
       .single()
@@ -171,17 +178,18 @@ Deno.serve(async req => {
       return json(400, { error: `Could not create profile: ${profileError.message}` })
     }
 
-    const config = await getWhatsAppConfig()
-    let whatsapp: { sent: boolean; error?: string } = {
-      sent: false,
-      error: 'WhatsApp is not configured in Settings',
-    }
-    if (config) {
-      whatsapp = await sendInviteMessage(config, phone, {
-        name: fullName,
-        login: phone,
-        password,
-      })
+    let whatsapp: { sent: boolean; error?: string } = { sent: false }
+    if (sendWhatsApp) {
+      const config = await getWhatsAppConfig()
+      if (config) {
+        whatsapp = await sendInviteMessage(config, phone, {
+          name: fullName,
+          login: phone,
+          password,
+        })
+      } else {
+        whatsapp = { sent: false, error: 'WhatsApp is not configured in Settings' }
+      }
     }
 
     return json(200, {
@@ -207,13 +215,18 @@ Deno.serve(async req => {
       .single()
     if (!profile) return json(404, { error: 'Staff member not found' })
 
-    const password = generatePassword()
+    // Admin may choose the new password; a generated one forces a change at next login
+    const customPassword = typeof body.password === 'string' && body.password.length > 0 ? body.password : null
+    if (customPassword && customPassword.length < 8) {
+      return json(400, { error: 'Password must be at least 8 characters' })
+    }
+    const password = customPassword ?? generatePassword()
     const { error: updateError } = await admin.auth.admin.updateUserById(profile.user_id, {
       password,
     })
     if (updateError) return json(400, { error: updateError.message })
 
-    await admin.from('profiles').update({ must_change_password: true }).eq('id', profile.id)
+    await admin.from('profiles').update({ must_change_password: !customPassword }).eq('id', profile.id)
 
     let whatsapp: { sent: boolean; error?: string } = { sent: false }
     if (sendWhatsApp && profile.phone) {
