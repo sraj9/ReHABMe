@@ -33,14 +33,24 @@ create policy "Users can update their own profile"
   on profiles for update
   using (auth.uid() = user_id);
 
+-- Role check must bypass RLS (security definer) — an inline subquery on
+-- profiles inside a profiles policy causes infinite recursion (42P17).
+create or replace function public.is_admin()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from profiles
+    where user_id = auth.uid() and role = 'admin'
+  );
+$$;
+
 create policy "Admins can manage all profiles"
   on profiles for all
-  using (
-    exists (
-      select 1 from profiles
-      where user_id = auth.uid() and role = 'admin'
-    )
-  );
+  using (public.is_admin());
 
 -- ============================================================
 -- PATIENTS
