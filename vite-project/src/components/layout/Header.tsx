@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
-import { Bell, ChevronDown, LogOut, User, Settings, Menu, CalendarDays, Receipt } from 'lucide-react'
+import { Bell, ChevronDown, LogOut, User, Settings, Menu, CalendarDays, Receipt, MapPin } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useAppointmentsContext } from '../../context/AppointmentsContext'
 import { useInvoicesContext } from '../../context/InvoicesContext'
+import { useAttendanceContext } from '../../context/AttendanceContext'
+import { useToast } from '../../context/ToastContext'
 import { formatCurrency } from '../../lib/format'
 
 const pageTitles: Record<string, string> = {
@@ -42,14 +44,76 @@ interface Notification {
 }
 
 export default function Header({ onToggleSidebar }: HeaderProps) {
-  const { user, signOut } = useAuth()
+  const { user, profile, signOut } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
+  const toast = useToast()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [bellOpen, setBellOpen] = useState(false)
+  const [locating, setLocating] = useState(false)
 
   const { appointments } = useAppointmentsContext()
   const { invoices } = useInvoicesContext()
+  const { attendance, addAttendance, updateAttendance } = useAttendanceContext()
+
+  // A session without a check-out means this person is currently checked in
+  const openSession = profile
+    ? attendance.find(a => a.profile_id === profile.id && !a.check_out_at)
+    : undefined
+
+  const handleCheckInOut = () => {
+    if (!profile) return
+    if (!('geolocation' in navigator)) {
+      toast.error('Location is not supported on this device — attendance requires it')
+      return
+    }
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      async position => {
+        const { latitude, longitude, accuracy } = position.coords
+        if (openSession) {
+          const result = await updateAttendance({
+            ...openSession,
+            check_out_at: new Date().toISOString(),
+            check_out_lat: latitude,
+            check_out_lng: longitude,
+          })
+          if (result) {
+            toast.success('Checked out — see you next time!')
+          } else {
+            toast.error('Could not record your check-out')
+          }
+        } else {
+          const now = new Date().toISOString()
+          const result = await addAttendance({
+            id: `att-${Date.now()}`,
+            profile_id: profile.id,
+            check_in_at: now,
+            lat: latitude,
+            lng: longitude,
+            accuracy_m: accuracy,
+            created_at: now,
+            profile,
+          })
+          if (result) {
+            toast.success('Checked in — attendance recorded')
+          } else {
+            toast.error('Could not record your check-in')
+          }
+        }
+        setLocating(false)
+      },
+      geoError => {
+        setLocating(false)
+        toast.error(
+          geoError.code === geoError.PERMISSION_DENIED
+            ? 'Location permission is required for attendance — enable it for this site and try again'
+            : 'Could not get your location. Move to an open area and try again.'
+        )
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+    )
+  }
 
   const today = format(new Date(), 'yyyy-MM-dd')
   const notifications: Notification[] = [
@@ -75,7 +139,7 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
   ]
 
   const pageTitle = getPageTitle(location.pathname)
-  const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'
+  const userName = profile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'
   const userInitials = userName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
 
   return (
@@ -94,6 +158,21 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
 
       {/* Right */}
       <div className="flex items-center gap-2">
+        {/* Attendance check-in / check-out */}
+        <button
+          onClick={handleCheckInOut}
+          disabled={locating}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-60 ${
+            openSession
+              ? 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
+              : 'bg-[#3d9cd6]/10 text-[#1e7ab4] border border-[#3d9cd6]/20 hover:bg-[#3d9cd6]/20'
+          }`}
+          title={openSession ? `Checked in at ${format(new Date(openSession.check_in_at), 'h:mm a')}` : 'Check in with your location for attendance'}
+        >
+          <MapPin size={13} />
+          {locating ? 'Getting location…' : openSession ? 'Check Out' : 'Check In'}
+        </button>
+
         {/* Notifications */}
         <div className="relative">
           <button
@@ -154,7 +233,7 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
             </div>
             <div className="hidden sm:block text-left">
               <p className="text-sm font-medium text-gray-900 leading-tight">{userName}</p>
-              <p className="text-xs text-gray-500 leading-tight">Administrator</p>
+              <p className="text-xs text-gray-500 leading-tight">{profile?.role === 'admin' ? 'Administrator' : 'Therapist'}</p>
             </div>
             <ChevronDown size={14} className="text-gray-400" />
           </button>

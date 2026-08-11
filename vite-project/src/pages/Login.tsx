@@ -7,7 +7,7 @@ import { isSupabaseConfigured } from '../lib/supabase'
 export default function Login() {
   const { signIn, isAuthenticated } = useAuth()
   const navigate = useNavigate()
-  const [email, setEmail] = useState('')
+  const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -19,7 +19,7 @@ export default function Login() {
     e.preventDefault()
     setError('')
     setLoading(true)
-    const { error } = await signIn(email, password)
+    const { error } = await signIn(identifier, password)
     setLoading(false)
     if (error) {
       setError(error.message)
@@ -67,16 +67,17 @@ export default function Login() {
             )}
 
             <div>
-              <label htmlFor="login-email" className="block text-sm font-medium text-gray-700 mb-1">
-                Email Address
+              <label htmlFor="login-identifier" className="block text-sm font-medium text-gray-700 mb-1">
+                Phone Number or Email
               </label>
               <input
-                id="login-email"
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
+                id="login-identifier"
+                type="text"
+                value={identifier}
+                onChange={e => setIdentifier(e.target.value)}
                 required
-                placeholder="you@rehabme.com"
+                autoComplete="username"
+                placeholder="+91 98765 43210 or you@rehabme.com"
                 className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#3d9cd6] focus:border-transparent"
               />
             </div>

@@ -8,13 +8,43 @@ export interface StaffProfile {
   id: string
   user_id: string
   full_name: string
-  email: string
+  email?: string
   role: UserRole
   phone?: string
   specialty?: string
   avatar_url?: string
   is_active: boolean
+  must_change_password?: boolean
   created_at: string
+  updated_at: string
+}
+
+export interface Attendance {
+  id: string
+  profile_id: string
+  check_in_at: string
+  check_out_at?: string
+  lat: number
+  lng: number
+  accuracy_m?: number
+  check_out_lat?: number
+  check_out_lng?: number
+  created_at: string
+  // Joined fields
+  profile?: StaffProfile
+}
+
+export interface ClinicSettings {
+  id: number
+  clinic_name: string
+  clinic_phone?: string
+  clinic_email?: string
+  clinic_address?: string
+  business_hours?: string
+  tax_id?: string
+  whatsapp_phone_number_id?: string
+  whatsapp_access_token?: string
+  whatsapp_template_invite: string
   updated_at: string
 }
 

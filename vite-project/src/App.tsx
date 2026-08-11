@@ -7,12 +7,14 @@ import { ToastProvider } from './context/ToastContext'
 import { AppointmentsProvider } from './context/AppointmentsContext'
 import { NotesProvider } from './context/NotesContext'
 import { InvoicesProvider } from './context/InvoicesContext'
+import { AttendanceProvider } from './context/AttendanceContext'
 
 // Layout
 import Layout from './components/layout/Layout'
 
 // Pages
 import Login from './pages/Login'
+import ChangePassword from './pages/ChangePassword'
 import Dashboard from './pages/Dashboard'
 import PatientList from './pages/patients/PatientList'
 import PatientDetail from './pages/patients/PatientDetail'
@@ -38,6 +40,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!auth.isAuthenticated) {
     return <Navigate to="/login" replace />
+  }
+
+  // Staff invited with a temporary password must set their own before entering
+  if (auth.profile?.must_change_password) {
+    return <ChangePassword />
   }
 
   return <>{children}</>
@@ -104,7 +111,9 @@ export default function App() {
             <AppointmentsProvider>
               <NotesProvider>
                 <InvoicesProvider>
-                  <AppRoutes />
+                  <AttendanceProvider>
+                    <AppRoutes />
+                  </AttendanceProvider>
                 </InvoicesProvider>
               </NotesProvider>
             </AppointmentsProvider>
