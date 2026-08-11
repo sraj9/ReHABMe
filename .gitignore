@@ -6,3 +6,6 @@
 
 # Vercel project link
 .vercel/
+
+# Node (root-level strays)
+node_modules/

@@ -11,6 +11,8 @@ import { usePatientsContext } from '../context/PatientsContext'
 import { useAppointmentsContext } from '../context/AppointmentsContext'
 import { useNotesContext } from '../context/NotesContext'
 import { useInvoicesContext } from '../context/InvoicesContext'
+import { usePaymentsContext } from '../context/PaymentsContext'
+import { invoiceBalance } from '../lib/ledger'
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -21,6 +23,7 @@ export default function Dashboard() {
   const { appointments } = useAppointmentsContext()
   const { notes } = useNotesContext()
   const { invoices } = useInvoicesContext()
+  const { payments } = usePaymentsContext()
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
@@ -28,7 +31,9 @@ export default function Dashboard() {
 
   const todaysAppointments = appointments.filter(a => a.appointment_date === today)
   const pendingInvoices = invoices.filter(i => i.status === 'sent' || i.status === 'overdue')
-  const totalRevenue = invoices.filter(i => i.status === 'paid').reduce((sum, inv) => sum + inv.total_amount, 0)
+  // Money actually received (payments register), not invoice statuses
+  const totalRevenue = payments.reduce((sum, p) => sum + p.amount, 0)
+  const totalOutstanding = pendingInvoices.reduce((sum, i) => sum + invoiceBalance(i, payments), 0)
   const recentActivity = deriveRecentActivity(patients, appointments, notes, invoices)
 
   const appointmentTypeLabels: Record<string, string> = {
@@ -96,14 +101,14 @@ export default function Dashboard() {
         <StatCard
           title="Pending Invoices"
           value={pendingInvoices.length}
-          subtitle={`${formatCurrency(pendingInvoices.reduce((s, i) => s + i.total_amount, 0))} outstanding`}
+          subtitle={`${formatCurrency(totalOutstanding)} outstanding`}
           icon={<Receipt size={24} />}
           color="amber"
         />
         <StatCard
           title="Revenue Collected"
           value={formatCurrency(totalRevenue)}
-          subtitle={`${invoices.filter(i => i.status === 'paid').length} paid invoices`}
+          subtitle={`${payments.length} payments received`}
           icon={<TrendingUp size={24} />}
           color="purple"
         />
