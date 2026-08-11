@@ -459,12 +459,12 @@ function InvoiceFormModal({ onClose, addInvoice, invoiceCount, defaultPatientId 
                     />
                   </div>
                   <div className="col-span-2">
-                    {i === 0 && <label htmlFor={`inv-item-${i}-quantity`} className="block text-xs text-gray-500 mb-1">Qty</label>}
-                    <input id={`inv-item-${i}-quantity`} aria-label={i === 0 ? undefined : 'Qty'} type="number" min="1" className={fieldClass()} value={item.quantity} onChange={e => updateItem(i, 'quantity', parseInt(e.target.value))} />
+                    {i === 0 && <label htmlFor={`inv-item-${i}-quantity`} className="block text-xs text-gray-500 mb-1">Sessions</label>}
+                    <input id={`inv-item-${i}-quantity`} aria-label={i === 0 ? undefined : 'Sessions'} type="number" min="1" className={fieldClass()} value={item.quantity} onChange={e => updateItem(i, 'quantity', parseInt(e.target.value))} />
                   </div>
                   <div className="col-span-3">
-                    {i === 0 && <label htmlFor={`inv-item-${i}-unit_price`} className="block text-xs text-gray-500 mb-1">Unit Price (₹)</label>}
-                    <input id={`inv-item-${i}-unit_price`} aria-label={i === 0 ? undefined : 'Unit Price (₹)'} type="number" min="0" step="0.01" className={fieldClass()} value={item.unit_price} onChange={e => updateItem(i, 'unit_price', parseFloat(e.target.value))} />
+                    {i === 0 && <label htmlFor={`inv-item-${i}-unit_price`} className="block text-xs text-gray-500 mb-1">Per Session Charges (₹)</label>}
+                    <input id={`inv-item-${i}-unit_price`} aria-label={i === 0 ? undefined : 'Per Session Charges (₹)'} type="number" min="0" step="0.01" className={fieldClass()} value={item.unit_price} onChange={e => updateItem(i, 'unit_price', parseFloat(e.target.value))} />
                   </div>
                   <div className={`col-span-1 flex ${i === 0 ? 'mt-5' : ''} items-center justify-end`}>
                     {items.length > 1 && (

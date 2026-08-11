@@ -103,7 +103,7 @@ export function printInvoice(invoice: Invoice): boolean {
 
   <table>
     <thead>
-      <tr><th>Description</th><th class="num">Qty</th><th class="num">Unit Price</th><th class="num">Total</th></tr>
+      <tr><th>Description</th><th class="num">Sessions</th><th class="num">Per Session Charges</th><th class="num">Total</th></tr>
     </thead>
     <tbody>${itemRows}</tbody>
   </table>
