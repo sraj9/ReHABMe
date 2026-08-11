@@ -12,7 +12,7 @@ import { useAppointmentsContext } from '../context/AppointmentsContext'
 import { useNotesContext } from '../context/NotesContext'
 import { useInvoicesContext } from '../context/InvoicesContext'
 import { usePaymentsContext } from '../context/PaymentsContext'
-import { invoiceBalance } from '../lib/ledger'
+import { invoiceBalance, effectivePayments } from '../lib/ledger'
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -32,7 +32,7 @@ export default function Dashboard() {
   const todaysAppointments = appointments.filter(a => a.appointment_date === today)
   const pendingInvoices = invoices.filter(i => i.status === 'sent' || i.status === 'overdue')
   // Money actually received (payments register), not invoice statuses
-  const totalRevenue = payments.reduce((sum, p) => sum + p.amount, 0)
+  const totalRevenue = effectivePayments(payments).reduce((sum, p) => sum + p.amount, 0)
   const totalOutstanding = pendingInvoices.reduce((sum, i) => sum + invoiceBalance(i, payments), 0)
   const recentActivity = deriveRecentActivity(patients, appointments, notes, invoices)
 
@@ -108,7 +108,7 @@ export default function Dashboard() {
         <StatCard
           title="Revenue Collected"
           value={formatCurrency(totalRevenue)}
-          subtitle={`${payments.length} payments received`}
+          subtitle={`${effectivePayments(payments).length} payments received`}
           icon={<TrendingUp size={24} />}
           color="purple"
         />

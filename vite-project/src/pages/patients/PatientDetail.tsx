@@ -15,7 +15,7 @@ import { useNotesContext } from '../../context/NotesContext'
 import { useInvoicesContext } from '../../context/InvoicesContext'
 import { usePaymentsContext } from '../../context/PaymentsContext'
 import { formatCurrency } from '../../lib/format'
-import { invoiceBalance } from '../../lib/ledger'
+import { invoiceBalance, effectivePayments } from '../../lib/ledger'
 import PainTrendChart from './PainTrendChart'
 import type { PaymentMethod } from '../../lib/types'
 
@@ -46,7 +46,7 @@ export default function PatientDetail() {
 
   // Ledger totals: drafts are not yet owed, so bill only issued invoices
   const totalBilled = patientInvoices.filter(i => i.status !== 'draft').reduce((s, i) => s + i.total_amount, 0)
-  const totalReceived = patientPayments.reduce((s, p) => s + p.amount, 0)
+  const totalReceived = effectivePayments(patientPayments).reduce((s, p) => s + p.amount, 0)
   const totalBalance = patientInvoices
     .filter(i => i.status !== 'draft' && i.status !== 'paid')
     .reduce((s, i) => s + invoiceBalance(i, payments), 0)
@@ -413,16 +413,16 @@ export default function PatientDetail() {
           ) : (
             <div className="divide-y divide-gray-50">
               {patientPayments.map(payment => (
-                <div key={payment.id} className="px-5 py-3.5 flex items-center gap-4">
+                <div key={payment.id} className={`px-5 py-3.5 flex items-center gap-4 ${payment.voided ? 'opacity-60' : ''}`}>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{formatCurrency(payment.amount)} — {paymentMethodLabels[payment.method]}</p>
+                    <p className={`text-sm font-medium text-gray-900 ${payment.voided ? 'line-through' : ''}`}>{formatCurrency(payment.amount)} — {paymentMethodLabels[payment.method]}</p>
                     <p className="text-xs text-gray-500">
                       {format(parseISO(payment.paid_at), 'MMM d, yyyy')}
                       {payment.invoice?.invoice_number ? ` • ${payment.invoice.invoice_number}` : ''}
                       {payment.notes ? ` • ${payment.notes}` : ''}
                     </p>
                   </div>
-                  <Badge variant="success" size="sm">received</Badge>
+                  <Badge variant={payment.voided ? 'danger' : 'success'} size="sm">{payment.voided ? 'wrong entry' : 'received'}</Badge>
                 </div>
               ))}
             </div>

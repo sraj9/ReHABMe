@@ -133,7 +133,7 @@ export interface Invoice {
   status: InvoiceStatus
   issue_date: string
   due_date: string
-  paid_date?: string
+  paid_date?: string | null
   subtotal: number
   tax_rate: number
   tax_amount: number
@@ -160,6 +160,9 @@ export interface Payment {
   paid_at: string
   notes?: string
   received_by?: string
+  /** Marked as a wrong entry — kept for the record, excluded from all totals */
+  voided?: boolean
+  voided_at?: string | null
   created_at: string
   // Joined fields
   patient?: Patient

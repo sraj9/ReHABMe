@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { format, parseISO, subMonths, isSameMonth } from 'date-fns'
 import {
-  IndianRupee, TrendingUp, TrendingDown, Wallet, Plus, Trash2, Receipt, LayoutGrid,
+  IndianRupee, TrendingUp, TrendingDown, Wallet, Plus, Trash2, Receipt, LayoutGrid, Ban,
 } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import Badge from '../../components/ui/Badge'
@@ -17,9 +17,9 @@ import { useExpensesContext } from '../../context/ExpensesContext'
 import { useInvoicesContext } from '../../context/InvoicesContext'
 import { useToast } from '../../context/ToastContext'
 import { useAuth } from '../../hooks/useAuth'
-import { invoiceBalance } from '../../lib/ledger'
+import { invoiceBalance, effectivePayments } from '../../lib/ledger'
 import { formatCurrency } from '../../lib/format'
-import type { Expense, ExpenseCategory, Invoice, PaymentMethod } from '../../lib/types'
+import type { Expense, ExpenseCategory, Invoice, Payment, PaymentMethod } from '../../lib/types'
 
 const PAGE_SIZE = 10
 
@@ -82,7 +82,8 @@ function OverviewTab() {
   const { invoices } = useInvoicesContext()
 
   const now = new Date()
-  const collectedThisMonth = payments
+  const counted = effectivePayments(payments)
+  const collectedThisMonth = counted
     .filter(p => isSameMonth(parseISO(p.paid_at), now))
     .reduce((sum, p) => sum + p.amount, 0)
   const spentThisMonth = expenses
@@ -97,7 +98,7 @@ function OverviewTab() {
     const month = subMonths(now, 5 - i)
     return {
       label: format(month, 'MMM'),
-      collections: payments
+      collections: counted
         .filter(p => isSameMonth(parseISO(p.paid_at), month))
         .reduce((sum, p) => sum + p.amount, 0),
       expenses: expenses
@@ -112,7 +113,7 @@ function OverviewTab() {
         <StatCard
           title="Collected This Month"
           value={formatCurrency(collectedThisMonth)}
-          subtitle={`${payments.filter(p => isSameMonth(parseISO(p.paid_at), now)).length} payments`}
+          subtitle={`${counted.filter(p => isSameMonth(parseISO(p.paid_at), now)).length} payments`}
           icon={<IndianRupee size={24} />}
           color="green"
         />
@@ -148,11 +149,41 @@ function OverviewTab() {
 // PAYMENTS REGISTER
 // ============================================================
 function PaymentsTab() {
-  const { payments, loading } = usePaymentsContext()
-  const { invoices } = useInvoicesContext()
+  const { payments, loading, updatePayment } = usePaymentsContext()
+  const { invoices, updateInvoice } = useInvoicesContext()
+  const toast = useToast()
   const [page, setPage] = useState(1)
   const [showPicker, setShowPicker] = useState(false)
   const [paymentTarget, setPaymentTarget] = useState<Invoice | null>(null)
+  const [voidTarget, setVoidTarget] = useState<Payment | null>(null)
+
+  const confirmVoid = async () => {
+    if (!voidTarget) return
+    const result = await updatePayment({
+      ...voidTarget,
+      voided: true,
+      voided_at: new Date().toISOString(),
+    })
+    const target = voidTarget
+    setVoidTarget(null)
+    if (!result) {
+      toast.error('Could not mark the payment as a wrong entry')
+      return
+    }
+
+    // A paid invoice may no longer be settled once this payment stops counting
+    const invoice = invoices.find(i => i.id === target.invoice_id)
+    if (invoice && invoice.status === 'paid') {
+      const remaining = invoiceBalance(
+        invoice,
+        payments.map(p => (p.id === target.id ? { ...p, voided: true } : p))
+      )
+      if (remaining > 0) {
+        await updateInvoice({ ...invoice, status: 'sent', paid_date: null, updated_at: new Date().toISOString() })
+      }
+    }
+    toast.success(`${formatCurrency(target.amount)} marked as wrong entry — removed from totals`)
+  }
 
   const pageCount = Math.max(1, Math.ceil(payments.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount)
@@ -173,27 +204,41 @@ function PaymentsTab() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100">
-                {['Date', 'Patient', 'Invoice', 'Method', 'Received By', 'Amount'].map(h => (
-                  <th key={h} className={`px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide ${h === 'Amount' ? 'text-right' : 'text-left'}`}>{h}</th>
+                {['Date', 'Patient', 'Invoice', 'Method', 'Received By', 'Amount', ''].map((h, i) => (
+                  <th key={i} className={`px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide ${h === 'Amount' ? 'text-right' : 'text-left'}`}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {paged.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-12 text-center text-sm text-gray-500">
+                  <td colSpan={7} className="px-5 py-12 text-center text-sm text-gray-500">
                     {loading ? 'Loading payments…' : 'No payments recorded yet'}
                   </td>
                 </tr>
               ) : (
                 paged.map(payment => (
-                  <tr key={payment.id}>
+                  <tr key={payment.id} className={payment.voided ? 'opacity-60' : ''}>
                     <td className="px-5 py-3.5 text-sm text-gray-600">{format(parseISO(payment.paid_at), 'MMM d, yyyy')}</td>
                     <td className="px-5 py-3.5 text-sm font-medium text-gray-900">{payment.patient?.full_name ?? '—'}</td>
                     <td className="px-5 py-3.5 text-sm text-[#3d9cd6]">{payment.invoice?.invoice_number ?? '—'}</td>
                     <td className="px-5 py-3.5"><Badge variant="default">{methodLabels[payment.method]}</Badge></td>
                     <td className="px-5 py-3.5 text-sm text-gray-600">{payment.receiver?.full_name ?? '—'}</td>
-                    <td className="px-5 py-3.5 text-sm font-semibold text-gray-900 text-right">{formatCurrency(payment.amount)}</td>
+                    <td className={`px-5 py-3.5 text-sm font-semibold text-gray-900 text-right ${payment.voided ? 'line-through' : ''}`}>{formatCurrency(payment.amount)}</td>
+                    <td className="px-5 py-3.5 text-right">
+                      {payment.voided ? (
+                        <Badge variant="danger" size="sm">wrong entry</Badge>
+                      ) : (
+                        <button
+                          onClick={() => setVoidTarget(payment)}
+                          aria-label="Mark as wrong entry"
+                          title="Mark as wrong entry"
+                          className="p-1 text-gray-400 hover:text-red-500 transition-colors rounded"
+                        >
+                          <Ban size={13} />
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))
               )}
@@ -238,6 +283,15 @@ function PaymentsTab() {
       {paymentTarget && (
         <RecordPaymentModal invoice={paymentTarget} onClose={() => setPaymentTarget(null)} />
       )}
+
+      <ConfirmDialog
+        open={!!voidTarget}
+        title="Mark as wrong entry?"
+        message={`${voidTarget ? formatCurrency(voidTarget.amount) : ''} (${voidTarget?.patient?.full_name ?? ''}, ${voidTarget?.invoice?.invoice_number ?? ''}) will stay on record but no longer count toward any totals. The invoice's balance reopens if needed.`}
+        confirmLabel="Mark wrong entry"
+        onConfirm={confirmVoid}
+        onCancel={() => setVoidTarget(null)}
+      />
     </div>
   )
 }
