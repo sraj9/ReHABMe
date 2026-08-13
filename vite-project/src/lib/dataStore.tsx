@@ -127,16 +127,45 @@ export function createStore<T extends { id: string }>(config: StoreConfig<T>) {
     useEffect(() => {
       if (!isSupabaseConfigured) return
 
+      let disposed = false
+      let channel: ReturnType<typeof supabase.channel> | undefined
+      let lastToken: string | null = null
       let timer: number | undefined
+
       const scheduleRefresh = () => {
         window.clearTimeout(timer)
         timer = window.setTimeout(() => void refresh(), 400)
       }
 
-      const channel = supabase
-        .channel(`db-changes-${table}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table }, scheduleRefresh)
-        .subscribe()
+      // RLS filters realtime events by the token presented at channel join —
+      // joining before the session is ready silently delivers nothing, so the
+      // channel must (re)join whenever the auth token changes.
+      const joinChannel = (token: string | null) => {
+        if (disposed || (token === lastToken && channel)) return
+        lastToken = token
+        if (channel) void supabase.removeChannel(channel)
+        if (token) supabase.realtime.setAuth(token)
+        channel = supabase
+          .channel(`db-changes-${table}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table }, scheduleRefresh)
+          .subscribe()
+      }
+
+      void supabase.auth.getSession().then(({ data: { session } }) => {
+        joinChannel(session?.access_token ?? null)
+      })
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (disposed) return
+        if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          const token = session?.access_token ?? null
+          if (token !== lastToken) {
+            joinChannel(token)
+            // Data fetched before login was RLS-filtered to nothing — reload it
+            scheduleRefresh()
+          }
+        }
+      })
 
       const onFocus = () => scheduleRefresh()
       const onVisibility = () => {
@@ -146,8 +175,10 @@ export function createStore<T extends { id: string }>(config: StoreConfig<T>) {
       document.addEventListener('visibilitychange', onVisibility)
 
       return () => {
+        disposed = true
         window.clearTimeout(timer)
-        void supabase.removeChannel(channel)
+        subscription.unsubscribe()
+        if (channel) void supabase.removeChannel(channel)
         window.removeEventListener('focus', onFocus)
         document.removeEventListener('visibilitychange', onVisibility)
       }
