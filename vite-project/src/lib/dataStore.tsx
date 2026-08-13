@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { supabase, isSupabaseConfigured } from './supabase'
 
 export interface StoreValue<T extends { id: string }> {
@@ -88,6 +88,7 @@ export function createStore<T extends { id: string }>(config: StoreConfig<T>) {
     )
     const [loading, setLoading] = useState(isSupabaseConfigured)
     const [error, setError] = useState<string | null>(null)
+    const hasLoaded = useRef(false)
 
     const setAndPersist = (updater: (prev: T[]) => T[]) => {
       setItems(prev => {
@@ -99,8 +100,9 @@ export function createStore<T extends { id: string }>(config: StoreConfig<T>) {
 
     const refresh = useCallback(async () => {
       if (!isSupabaseConfigured) return
-      setLoading(true)
-      setError(null)
+      // Background refreshes replace data silently — only the first load
+      // shows the loading state
+      if (!hasLoaded.current) setLoading(true)
       let query = supabase.from(table).select(select)
       if (orderBy) query = query.order(orderBy.column, { ascending: orderBy.ascending })
       const { data, error: err } = await query
@@ -108,13 +110,47 @@ export function createStore<T extends { id: string }>(config: StoreConfig<T>) {
         handleAuthFailure(err.message)
         setError(err.message)
       } else {
+        setError(null)
         setItems((data ?? []) as unknown as T[])
+        hasLoaded.current = true
       }
       setLoading(false)
     }, [])
 
     useEffect(() => {
       void refresh()
+    }, [refresh])
+
+    // Keep every open screen current: refetch when the database broadcasts
+    // a change to this table (edits from other devices/staff) and when the
+    // tab regains focus after being away.
+    useEffect(() => {
+      if (!isSupabaseConfigured) return
+
+      let timer: number | undefined
+      const scheduleRefresh = () => {
+        window.clearTimeout(timer)
+        timer = window.setTimeout(() => void refresh(), 400)
+      }
+
+      const channel = supabase
+        .channel(`db-changes-${table}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table }, scheduleRefresh)
+        .subscribe()
+
+      const onFocus = () => scheduleRefresh()
+      const onVisibility = () => {
+        if (document.visibilityState === 'visible') scheduleRefresh()
+      }
+      window.addEventListener('focus', onFocus)
+      document.addEventListener('visibilitychange', onVisibility)
+
+      return () => {
+        window.clearTimeout(timer)
+        void supabase.removeChannel(channel)
+        window.removeEventListener('focus', onFocus)
+        document.removeEventListener('visibilitychange', onVisibility)
+      }
     }, [refresh])
 
     const add = async (item: T): Promise<T | null> => {
