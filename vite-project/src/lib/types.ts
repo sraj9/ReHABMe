@@ -183,6 +183,36 @@ export interface Expense {
   recorder?: StaffProfile
 }
 
+export interface SessionPackage {
+  id: string
+  patient_id: string
+  name: string
+  total_sessions: number
+  price: number
+  invoice_id?: string | null
+  purchased_at: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  // Joined fields
+  patient?: Patient
+}
+
+export interface PatientSession {
+  id: string
+  patient_id: string
+  /** null = walk-in (pay-per-visit) session */
+  package_id?: string | null
+  therapist_id?: string
+  session_at: string
+  notes?: string
+  created_at: string
+  // Joined fields
+  patient?: Patient
+  package?: SessionPackage
+  therapist?: StaffProfile
+}
+
 export interface DashboardStats {
   total_patients: number
   todays_appointments: number

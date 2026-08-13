@@ -10,6 +10,8 @@ import { InvoicesProvider } from './context/InvoicesContext'
 import { AttendanceProvider } from './context/AttendanceContext'
 import { PaymentsProvider } from './context/PaymentsContext'
 import { ExpensesProvider } from './context/ExpensesContext'
+import { PackagesProvider } from './context/PackagesContext'
+import { SessionsProvider } from './context/SessionsContext'
 
 // Layout
 import Layout from './components/layout/Layout'
@@ -120,7 +122,11 @@ export default function App() {
                   <AttendanceProvider>
                     <PaymentsProvider>
                       <ExpensesProvider>
-                        <AppRoutes />
+                        <PackagesProvider>
+                          <SessionsProvider>
+                            <AppRoutes />
+                          </SessionsProvider>
+                        </PackagesProvider>
                       </ExpensesProvider>
                     </PaymentsProvider>
                   </AttendanceProvider>

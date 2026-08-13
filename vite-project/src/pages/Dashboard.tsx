@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format, parseISO } from 'date-fns'
-import { Users, CalendarDays, Receipt, TrendingUp, Clock, CheckCircle, AlertCircle, Activity, IndianRupee } from 'lucide-react'
+import { Users, CalendarDays, Receipt, TrendingUp, Clock, CheckCircle, AlertCircle, Activity, IndianRupee, Play } from 'lucide-react'
 import StatCard from '../components/ui/StatCard'
 import Card, { CardHeader } from '../components/ui/Card'
 import Badge, { getAppointmentStatusBadge } from '../components/ui/Badge'
 import RecordPaymentModal from '../components/RecordPaymentModal'
 import InvoicePickerModal from '../components/InvoicePickerModal'
+import StartSessionModal from '../components/StartSessionModal'
 import { formatCurrency } from '../lib/format'
 import { deriveRecentActivity } from '../lib/activity'
 import { useAuth } from '../hooks/useAuth'
@@ -23,6 +24,7 @@ export default function Dashboard() {
   const today = format(new Date(), 'yyyy-MM-dd')
   const [showPicker, setShowPicker] = useState(false)
   const [paymentTarget, setPaymentTarget] = useState<Invoice | null>(null)
+  const [showStartSession, setShowStartSession] = useState(false)
 
   const { user, profile } = useAuth()
   const { patients } = usePatientsContext()
@@ -82,13 +84,22 @@ export default function Dashboard() {
               {format(new Date(), 'EEEE, MMMM d, yyyy')} &mdash; You have {todaysAppointments.filter(a => a.status === 'scheduled').length} appointments scheduled today
             </p>
           </div>
-          <button
-            onClick={() => setShowPicker(true)}
-            className="flex items-center gap-2 bg-white text-[#1e7ab4] hover:bg-blue-50 font-medium text-sm px-4 py-2.5 rounded-xl shadow-sm transition-colors flex-shrink-0"
-          >
-            <IndianRupee size={16} />
-            Payment Received
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setShowStartSession(true)}
+              className="flex items-center gap-2 bg-[#b7f383] text-gray-800 hover:bg-[#9ee060] font-medium text-sm px-4 py-2.5 rounded-xl shadow-sm transition-colors flex-shrink-0"
+            >
+              <Play size={16} />
+              Start Session
+            </button>
+            <button
+              onClick={() => setShowPicker(true)}
+              className="flex items-center gap-2 bg-white text-[#1e7ab4] hover:bg-blue-50 font-medium text-sm px-4 py-2.5 rounded-xl shadow-sm transition-colors flex-shrink-0"
+            >
+              <IndianRupee size={16} />
+              Payment Received
+            </button>
+          </div>
         </div>
       </div>
 
@@ -301,6 +312,9 @@ export default function Dashboard() {
       )}
       {paymentTarget && (
         <RecordPaymentModal invoice={paymentTarget} onClose={() => setPaymentTarget(null)} />
+      )}
+      {showStartSession && (
+        <StartSessionModal onClose={() => setShowStartSession(false)} />
       )}
     </div>
   )

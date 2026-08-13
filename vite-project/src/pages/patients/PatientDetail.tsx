@@ -14,8 +14,13 @@ import { useAppointmentsContext } from '../../context/AppointmentsContext'
 import { useNotesContext } from '../../context/NotesContext'
 import { useInvoicesContext } from '../../context/InvoicesContext'
 import { usePaymentsContext } from '../../context/PaymentsContext'
+import { usePackagesContext } from '../../context/PackagesContext'
+import { useSessionsContext } from '../../context/SessionsContext'
 import { formatCurrency } from '../../lib/format'
 import { invoiceBalance, effectivePayments } from '../../lib/ledger'
+import { sessionsRemaining } from '../../lib/packages'
+import StartSessionModal from '../../components/StartSessionModal'
+import AssignPackageModal from '../../components/AssignPackageModal'
 import PainTrendChart from './PainTrendChart'
 import type { PaymentMethod } from '../../lib/types'
 
@@ -30,19 +35,25 @@ const paymentMethodLabels: Record<PaymentMethod, string> = {
 export default function PatientDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<'overview' | 'appointments' | 'notes' | 'billing'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'sessions' | 'appointments' | 'notes' | 'billing'>('overview')
+  const [showStartSession, setShowStartSession] = useState(false)
+  const [showAssignPackage, setShowAssignPackage] = useState(false)
 
   const { patients } = usePatientsContext()
   const { appointments } = useAppointmentsContext()
   const { notes } = useNotesContext()
   const { invoices } = useInvoicesContext()
   const { payments } = usePaymentsContext()
+  const { packages } = usePackagesContext()
+  const { sessions } = useSessionsContext()
 
   const patient = patients.find(p => p.id === id)
   const patientAppointments = appointments.filter(a => a.patient_id === id)
   const patientNotes = notes.filter(n => n.patient_id === id)
   const patientInvoices = invoices.filter(i => i.patient_id === id)
   const patientPayments = payments.filter(p => p.patient_id === id)
+  const patientPackages = packages.filter(p => p.patient_id === id)
+  const patientSessions = sessions.filter(s => s.patient_id === id)
 
   // Ledger totals: drafts are not yet owed, so bill only issued invoices
   const totalBilled = patientInvoices.filter(i => i.status !== 'draft').reduce((s, i) => s + i.total_amount, 0)
@@ -75,6 +86,7 @@ export default function PatientDetail() {
 
   const tabs = [
     { key: 'overview', label: 'Overview', count: null },
+    { key: 'sessions', label: 'Sessions', count: patientSessions.length },
     { key: 'appointments', label: 'Appointments', count: patientAppointments.length },
     { key: 'notes', label: 'SOAP Notes', count: patientNotes.length },
     { key: 'billing', label: 'Billing', count: patientInvoices.length },
@@ -151,6 +163,7 @@ export default function PatientDetail() {
           {/* Quick stats */}
           <div className="hidden md:flex gap-4 flex-shrink-0">
             {[
+              { label: 'Sessions', value: patientSessions.length, color: 'text-green-600', bg: 'bg-green-50' },
               { label: 'Appointments', value: patientAppointments.length, color: 'text-blue-600', bg: 'bg-blue-50' },
               { label: 'Notes', value: patientNotes.length, color: 'text-purple-600', bg: 'bg-purple-50' },
               { label: 'Invoices', value: patientInvoices.length, color: 'text-amber-600', bg: 'bg-amber-50' },
@@ -280,6 +293,87 @@ export default function PatientDetail() {
         </div>
       )}
 
+      {/* Sessions tab */}
+      {activeTab === 'sessions' && (
+        <div className="space-y-5">
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="outline" onClick={() => setShowAssignPackage(true)}>
+              Assign Package
+            </Button>
+            <Button size="sm" onClick={() => setShowStartSession(true)}>
+              Start Session
+            </Button>
+          </div>
+
+          {/* Packages */}
+          {patientPackages.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {patientPackages.map(pkg => {
+                const remaining = sessionsRemaining(pkg, sessions)
+                const used = pkg.total_sessions - remaining
+                const exhausted = remaining === 0
+                return (
+                  <Card key={pkg.id}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-900 truncate">{pkg.name}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Purchased {format(parseISO(pkg.purchased_at), 'MMM d, yyyy')}
+                          {pkg.price > 0 ? ` • ${formatCurrency(pkg.price)}` : ''}
+                        </p>
+                      </div>
+                      <Badge variant={exhausted ? 'default' : 'success'} size="sm" dot={!exhausted}>
+                        {exhausted ? 'Completed' : 'Active'}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-3 mt-3">
+                      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${exhausted ? 'bg-gray-300' : 'bg-[#3d9cd6]'}`}
+                          style={{ width: `${(used / pkg.total_sessions) * 100}%` }}
+                        />
+                      </div>
+                      <p className="text-xs font-medium text-gray-600 flex-shrink-0">{used} of {pkg.total_sessions} used</p>
+                    </div>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Session history */}
+          <Card padding="none">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-900">Session History</h3>
+            </div>
+            {patientSessions.length === 0 ? (
+              <div className="py-12 text-center text-sm text-gray-500">
+                No sessions yet — use Start Session when {patient.full_name.split(' ')[0]} visits
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                {patientSessions.map(session => (
+                  <div key={session.id} className="px-5 py-3.5 flex items-center gap-4">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900">
+                        {format(parseISO(session.session_at), 'MMM d, yyyy • h:mm a')}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {session.therapist?.full_name ?? 'Therapist not specified'}
+                        {session.notes ? ` • ${session.notes}` : ''}
+                      </p>
+                    </div>
+                    <Badge variant={session.package_id ? 'info' : 'warning'} size="sm">
+                      {session.package_id ? (session.package?.name ?? 'Package') : 'Walk-in'}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
+
       {/* Appointments tab */}
       {activeTab === 'appointments' && (
         <Card padding="none">
@@ -403,7 +497,7 @@ export default function PatientDetail() {
           )}
         </Card>
 
-        {/* Payment history */}
+        {/* Payment history — see billing tab render below */}
         <Card padding="none">
           <div className="px-5 py-4 border-b border-gray-100">
             <h3 className="text-sm font-semibold text-gray-900">Payment History</h3>
@@ -429,6 +523,14 @@ export default function PatientDetail() {
           )}
         </Card>
         </div>
+      )}
+
+      {/* Session quick actions */}
+      {showStartSession && (
+        <StartSessionModal onClose={() => setShowStartSession(false)} defaultPatientId={patient.id} />
+      )}
+      {showAssignPackage && (
+        <AssignPackageModal patient={patient} onClose={() => setShowAssignPackage(false)} />
       )}
     </div>
   )
