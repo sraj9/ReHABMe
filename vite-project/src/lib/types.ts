@@ -203,9 +203,11 @@ export interface PatientSession {
   patient_id: string
   /** null = walk-in (pay-per-visit) session */
   package_id?: string | null
-  therapist_id?: string
+  therapist_id?: string | null
   session_at: string
-  notes?: string
+  notes?: string | null
+  /** Auth user id of whoever logged the session — used for the 1-minute undo window */
+  created_by?: string | null
   created_at: string
   // Joined fields
   patient?: Patient

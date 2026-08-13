@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { format, parseISO, differenceInYears } from 'date-fns'
 import {
   ArrowLeft, Edit, Calendar, FileText, Receipt,
   Phone, Mail, MapPin, AlertCircle, Pill, Shield,
-  User, UserPlus, Stethoscope, CalendarDays
+  User, UserPlus, Stethoscope, CalendarDays, Pencil, Trash2, Undo2
 } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import Badge, { getAppointmentStatusBadge } from '../../components/ui/Badge'
@@ -21,8 +21,12 @@ import { invoiceBalance, effectivePayments } from '../../lib/ledger'
 import { sessionsRemaining } from '../../lib/packages'
 import StartSessionModal from '../../components/StartSessionModal'
 import AssignPackageModal from '../../components/AssignPackageModal'
+import EditSessionModal from '../../components/EditSessionModal'
+import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import { useAuth } from '../../hooks/useAuth'
+import { useToast } from '../../context/ToastContext'
 import PainTrendChart from './PainTrendChart'
-import type { PaymentMethod } from '../../lib/types'
+import type { PatientSession, PaymentMethod } from '../../lib/types'
 
 const paymentMethodLabels: Record<PaymentMethod, string> = {
   cash: 'Cash',
@@ -38,6 +42,10 @@ export default function PatientDetail() {
   const [activeTab, setActiveTab] = useState<'overview' | 'sessions' | 'appointments' | 'notes' | 'billing'>('overview')
   const [showStartSession, setShowStartSession] = useState(false)
   const [showAssignPackage, setShowAssignPackage] = useState(false)
+  const [editSession, setEditSession] = useState<PatientSession | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<PatientSession | null>(null)
+  // Ticks while the Sessions tab is open so the 1-minute undo window closes visibly
+  const [nowMs, setNowMs] = useState(() => Date.now())
 
   const { patients } = usePatientsContext()
   const { appointments } = useAppointmentsContext()
@@ -45,7 +53,32 @@ export default function PatientDetail() {
   const { invoices } = useInvoicesContext()
   const { payments } = usePaymentsContext()
   const { packages } = usePackagesContext()
-  const { sessions } = useSessionsContext()
+  const { sessions, deleteSession } = useSessionsContext()
+  const { profile } = useAuth()
+  const toast = useToast()
+
+  useEffect(() => {
+    if (activeTab !== 'sessions') return
+    const timer = window.setInterval(() => setNowMs(Date.now()), 10_000)
+    return () => window.clearInterval(timer)
+  }, [activeTab])
+
+  const isAdmin = profile?.role === 'admin'
+  const UNDO_WINDOW_MS = 60_000
+  const canUndoSession = (session: PatientSession) =>
+    !isAdmin &&
+    !!profile &&
+    session.created_by === profile.user_id &&
+    nowMs - parseISO(session.created_at).getTime() < UNDO_WINDOW_MS
+
+  const handleDeleteSession = async (session: PatientSession, isUndo: boolean) => {
+    const removed = await deleteSession(session.id)
+    if (removed) {
+      toast.success(isUndo ? 'Session removed' : 'Session deleted')
+    } else {
+      toast.error(isUndo ? 'Could not undo — the 1-minute window may have passed' : 'Could not delete the session')
+    }
+  }
 
   const patient = patients.find(p => p.id === id)
   const patientAppointments = appointments.filter(a => a.patient_id === id)
@@ -366,6 +399,36 @@ export default function PatientDetail() {
                     <Badge variant={session.package_id ? 'info' : 'warning'} size="sm">
                       {session.package_id ? (session.package?.name ?? 'Package') : 'Walk-in'}
                     </Badge>
+                    {isAdmin && (
+                      <div className="flex gap-1 flex-shrink-0">
+                        <button
+                          onClick={() => setEditSession(session)}
+                          aria-label="Edit session"
+                          title="Edit session"
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-[#3d9cd6] hover:bg-[#3d9cd6]/10 transition-colors"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget(session)}
+                          aria-label="Delete session"
+                          title="Delete session"
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    )}
+                    {canUndoSession(session) && (
+                      <button
+                        onClick={() => void handleDeleteSession(session, true)}
+                        title="Remove this session — available for 1 minute after logging"
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors flex-shrink-0"
+                      >
+                        <Undo2 size={13} />
+                        Undo
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -524,6 +587,23 @@ export default function PatientDetail() {
         </Card>
         </div>
       )}
+
+      {/* Session editing (admin) */}
+      {editSession && (
+        <EditSessionModal session={editSession} onClose={() => setEditSession(null)} />
+      )}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete this session?"
+        message={deleteTarget
+          ? `The session logged on ${format(parseISO(deleteTarget.session_at), 'MMM d, yyyy • h:mm a')} will be removed${deleteTarget.package_id ? ' and returned to the package' : ''}.`
+          : ''}
+        onConfirm={() => {
+          if (deleteTarget) void handleDeleteSession(deleteTarget, false)
+          setDeleteTarget(null)
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
 
       {/* Session quick actions */}
       {showStartSession && (

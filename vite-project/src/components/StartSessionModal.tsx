@@ -18,7 +18,7 @@ interface StartSessionModalProps {
 export default function StartSessionModal({ onClose, defaultPatientId }: StartSessionModalProps) {
   const { patients } = usePatientsContext()
   const { packages } = usePackagesContext()
-  const { sessions, addSession } = useSessionsContext()
+  const { sessions, addSession, deleteSession } = useSessionsContext()
   const { staff } = useStaffContext()
   const { profile } = useAuth()
   const toast = useToast()
@@ -56,6 +56,8 @@ export default function StartSessionModal({ onClose, defaultPatientId }: StartSe
       therapist_id: therapistId || undefined,
       session_at: now,
       notes: notes.trim() || undefined,
+      // Omitted when unknown so the database default (auth.uid()) applies
+      ...(profile ? { created_by: profile.user_id } : {}),
       created_at: now,
       patient,
       package: activePackage,
@@ -66,10 +68,22 @@ export default function StartSessionModal({ onClose, defaultPatientId }: StartSe
       setError('Could not log the session — the patient may already have one today.')
       return
     }
+    const undo = {
+      label: 'Undo',
+      onClick: () => {
+        void deleteSession(session.id).then(removed => {
+          if (removed) toast.success('Session removed')
+          else toast.error('Could not undo — the 1-minute window may have passed')
+        })
+      },
+    }
     if (activePackage) {
-      toast.success(`Session logged for ${patient?.full_name} — ${remaining - 1} of ${activePackage.total_sessions} left in ${activePackage.name}`)
+      toast.success(
+        `Session logged for ${patient?.full_name} — ${remaining - 1} of ${activePackage.total_sessions} left in ${activePackage.name}`,
+        { action: undo, duration: 10000 }
+      )
     } else {
-      toast.success(`Walk-in session logged for ${patient?.full_name}`)
+      toast.success(`Walk-in session logged for ${patient?.full_name}`, { action: undo, duration: 10000 })
     }
     onClose()
   }

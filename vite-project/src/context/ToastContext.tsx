@@ -3,15 +3,28 @@ import { CheckCircle, AlertCircle, X } from 'lucide-react'
 
 type ToastType = 'success' | 'error'
 
+interface ToastAction {
+  label: string
+  onClick: () => void
+}
+
+interface ToastOptions {
+  /** Optional action button, e.g. Undo */
+  action?: ToastAction
+  /** How long the toast stays visible (ms). Defaults to 4000. */
+  duration?: number
+}
+
 interface ToastItem {
   id: number
   type: ToastType
   message: string
+  action?: ToastAction
 }
 
 interface ToastValue {
-  success: (message: string) => void
-  error: (message: string) => void
+  success: (message: string, options?: ToastOptions) => void
+  error: (message: string, options?: ToastOptions) => void
 }
 
 const ToastContext = createContext<ToastValue | null>(null)
@@ -24,15 +37,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setToasts(prev => prev.filter(t => t.id !== id))
   }, [])
 
-  const show = useCallback((type: ToastType, message: string) => {
+  const show = useCallback((type: ToastType, message: string, options?: ToastOptions) => {
     const id = nextId.current++
-    setToasts(prev => [...prev, { id, type, message }])
-    setTimeout(() => dismiss(id), 4000)
+    setToasts(prev => [...prev, { id, type, message, action: options?.action }])
+    setTimeout(() => dismiss(id), options?.duration ?? 4000)
   }, [dismiss])
 
   const value = useMemo<ToastValue>(() => ({
-    success: (message: string) => show('success', message),
-    error: (message: string) => show('error', message),
+    success: (message: string, options?: ToastOptions) => show('success', message, options),
+    error: (message: string, options?: ToastOptions) => show('error', message, options),
   }), [show])
 
   return (
@@ -54,6 +67,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               <AlertCircle size={17} className="text-red-500 flex-shrink-0 mt-0.5" />
             )}
             <p className="text-sm text-gray-800 flex-1">{toast.message}</p>
+            {toast.action && (
+              <button
+                onClick={() => {
+                  toast.action?.onClick()
+                  dismiss(toast.id)
+                }}
+                className="text-sm font-semibold text-[#3d9cd6] hover:text-[#2e7cad] flex-shrink-0 mt-0.5"
+              >
+                {toast.action.label}
+              </button>
+            )}
             <button
               onClick={() => dismiss(toast.id)}
               aria-label="Dismiss notification"
