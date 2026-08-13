@@ -14,6 +14,7 @@ import { useToast } from '../../context/ToastContext'
 import { useAuth } from '../../hooks/useAuth'
 import { useClinicSettings } from '../../hooks/useClinicSettings'
 import { staffAdmin } from '../../lib/staffAdmin'
+import { normalizePhone } from '../../lib/phone'
 import { isSupabaseConfigured } from '../../lib/supabase'
 import type { StaffProfile, UserRole } from '../../lib/types'
 
@@ -75,6 +76,19 @@ function StaffTab({ isAdmin }: { isAdmin: boolean }) {
 
   const confirmDelete = async () => {
     if (!deleteTarget) return
+    if (isSupabaseConfigured) {
+      // Server-side delete removes the login account too — otherwise the
+      // phone number stays registered and can never be re-added
+      const result = await staffAdmin({ action: 'delete', profile_id: deleteTarget.id })
+      setDeleteTarget(null)
+      if (result.ok) {
+        await refresh()
+        toast.success('Staff member and their login removed')
+      } else {
+        toast.error(result.error ?? 'Could not remove the staff member')
+      }
+      return
+    }
     const ok = await deleteStaff(deleteTarget.id)
     setDeleteTarget(null)
     if (ok) {
@@ -192,7 +206,7 @@ function StaffTab({ isAdmin }: { isAdmin: boolean }) {
       <ConfirmDialog
         open={!!deleteTarget}
         title="Remove staff member?"
-        message={`This will remove ${deleteTarget?.full_name ?? ''}'s profile. Their appointments and notes remain but lose the therapist link.`}
+        message={`This removes ${deleteTarget?.full_name ?? ''}'s profile and login account — their number can be re-added later. Appointments and notes remain but lose the therapist link.`}
         confirmLabel="Remove"
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
@@ -219,7 +233,7 @@ interface InviteStaffModalProps {
 
 function InviteStaffModal({ onClose, addStaffLocally, refresh }: InviteStaffModalProps) {
   const toast = useToast()
-  const [form, setForm] = useState({ full_name: '', phone: '+91', email: '', role: 'therapist' as UserRole, specialty: '', password: '' })
+  const [form, setForm] = useState({ full_name: '', phone: '', email: '', role: 'therapist' as UserRole, specialty: '', password: '' })
   const [sendWhatsApp, setSendWhatsApp] = useState(true)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [sending, setSending] = useState(false)
@@ -228,7 +242,7 @@ function InviteStaffModal({ onClose, addStaffLocally, refresh }: InviteStaffModa
   const validate = (): boolean => {
     const errs: Record<string, string> = {}
     if (!form.full_name.trim()) errs.full_name = 'Name is required'
-    if (!/^\+\d{8,15}$/.test(form.phone.replace(/[\s-]/g, ''))) errs.phone = 'Use international format, e.g. +919876543210'
+    if (!normalizePhone(form.phone)) errs.phone = 'Enter a valid mobile number, e.g. 9876543210'
     if (form.email.trim() && !/^\S+@\S+\.\S+$/.test(form.email.trim())) errs.email = 'Enter a valid email or leave it empty'
     if (form.password && form.password.length < 8) errs.password = 'At least 8 characters, or leave empty to auto-generate'
     setErrors(errs)
@@ -246,7 +260,7 @@ function InviteStaffModal({ onClose, addStaffLocally, refresh }: InviteStaffModa
         id: `staff-${Date.now()}`,
         user_id: `demo-${Date.now()}`,
         full_name: form.full_name.trim(),
-        phone: form.phone.replace(/[\s-]/g, ''),
+        phone: normalizePhone(form.phone) ?? form.phone,
         email: form.email.trim() || undefined,
         role: form.role,
         specialty: form.specialty.trim() || undefined,
@@ -263,7 +277,7 @@ function InviteStaffModal({ onClose, addStaffLocally, refresh }: InviteStaffModa
     const response = await staffAdmin({
       action: 'invite',
       full_name: form.full_name.trim(),
-      phone: form.phone.replace(/[\s-]/g, ''),
+      phone: normalizePhone(form.phone) ?? form.phone,
       email: form.email.trim() || null,
       role: form.role,
       specialty: form.specialty.trim() || null,
@@ -316,7 +330,7 @@ function InviteStaffModal({ onClose, addStaffLocally, refresh }: InviteStaffModa
           </div>
           <div>
             <label htmlFor="invite-phone" className={labelClass}>WhatsApp Number *</label>
-            <input id="invite-phone" className={fieldClass} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+919876543210" />
+            <input id="invite-phone" className={fieldClass} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="9876543210" />
             {errors.phone && <p className="text-xs text-red-500 mt-1">{errors.phone}</p>}
             <p className="text-xs text-gray-400 mt-1">Login credentials are sent to this number. It is also their login ID.</p>
           </div>
@@ -488,18 +502,40 @@ function EditStaffModal({ member, onClose, updateStaff, onToggleActive }: EditSt
   const toast = useToast()
   const [form, setForm] = useState({
     full_name: member.full_name,
+    phone: member.phone ?? '',
     email: member.email ?? '',
     specialty: member.specialty ?? '',
     role: member.role,
   })
+  const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
   const handleSave = async () => {
     if (!form.full_name.trim()) return
+    const newPhone = form.phone.trim() ? normalizePhone(form.phone) : null
+    if (form.phone.trim() && !newPhone) {
+      setError('Enter a valid mobile number, e.g. 9876543210')
+      return
+    }
     setSaving(true)
+    setError('')
+
+    // The phone is the login identity — in live mode it must change on the
+    // auth account too, which only the server can do
+    const phoneChanged = (newPhone ?? '') !== (member.phone ?? '')
+    if (phoneChanged && newPhone && isSupabaseConfigured) {
+      const phoneResult = await staffAdmin({ action: 'update_phone', profile_id: member.id, phone: newPhone })
+      if (!phoneResult.ok) {
+        setSaving(false)
+        setError(phoneResult.error ?? 'Could not update the mobile number')
+        return
+      }
+    }
+
     const result = await updateStaff({
       ...member,
       full_name: form.full_name.trim(),
+      phone: newPhone ?? member.phone,
       email: form.email.trim() || undefined,
       specialty: form.specialty.trim() || undefined,
       role: form.role,
@@ -507,7 +543,7 @@ function EditStaffModal({ member, onClose, updateStaff, onToggleActive }: EditSt
     })
     setSaving(false)
     if (result) {
-      toast.success('Staff member updated')
+      toast.success(phoneChanged ? 'Staff member updated — they now log in with the new number' : 'Staff member updated')
       onClose()
     } else {
       toast.error('Could not update the staff member')
@@ -523,9 +559,19 @@ function EditStaffModal({ member, onClose, updateStaff, onToggleActive }: EditSt
           <button onClick={onClose} aria-label="Close dialog" className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">✕</button>
         </div>
         <div className="px-6 py-5 space-y-4">
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              <p className="text-xs text-red-600">{error}</p>
+            </div>
+          )}
           <div>
             <label htmlFor="edit-staff-name" className={labelClass}>Full Name</label>
             <input id="edit-staff-name" className={fieldClass} value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} />
+          </div>
+          <div>
+            <label htmlFor="edit-staff-phone" className={labelClass}>Mobile Number</label>
+            <input id="edit-staff-phone" className={fieldClass} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="9876543210" />
+            <p className="text-xs text-gray-400 mt-1">This is their login ID — changing it changes how they sign in.</p>
           </div>
           <div>
             <label htmlFor="edit-staff-email" className={labelClass}>Email (optional)</label>
@@ -787,7 +833,7 @@ function WhatsAppTab() {
             className={`${fieldClass} flex-1`}
             value={testTo}
             onChange={e => setTestTo(e.target.value)}
-            placeholder="+919876543210"
+            placeholder="9876543210"
           />
           <Button variant="outline" loading={testing} icon={<Send size={14} />} onClick={handleTest} disabled={!isSupabaseConfigured}>
             Send Test

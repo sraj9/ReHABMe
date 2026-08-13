@@ -51,6 +51,16 @@ function errorMessage(e: unknown): string {
   return String(e)
 }
 
+/**
+ * An expired/invalid session makes every write fail with a misleading error.
+ * Detect it and sign out so the user lands on the login page instead.
+ */
+function handleAuthFailure(message: string): void {
+  if (isSupabaseConfigured && /jwt|token.*(invalid|expired)|expired.*token|not.*authenticated|401/i.test(message)) {
+    void supabase.auth.signOut()
+  }
+}
+
 export function createStore<T extends { id: string }>(config: StoreConfig<T>) {
   const { table, storageKey, mockData, select = '*', joinedFields = [], generatedFields = [], orderBy } = config
 
@@ -95,6 +105,7 @@ export function createStore<T extends { id: string }>(config: StoreConfig<T>) {
       if (orderBy) query = query.order(orderBy.column, { ascending: orderBy.ascending })
       const { data, error: err } = await query
       if (err) {
+        handleAuthFailure(err.message)
         setError(err.message)
       } else {
         setItems((data ?? []) as unknown as T[])
@@ -128,7 +139,7 @@ export function createStore<T extends { id: string }>(config: StoreConfig<T>) {
         setError(null)
         return created
       } catch (e) {
-        setError(errorMessage(e))
+        { const msg = errorMessage(e); handleAuthFailure(msg); setError(msg) }
         return null
       }
     }
@@ -151,7 +162,7 @@ export function createStore<T extends { id: string }>(config: StoreConfig<T>) {
         setError(null)
         return updated
       } catch (e) {
-        setError(errorMessage(e))
+        { const msg = errorMessage(e); handleAuthFailure(msg); setError(msg) }
         return null
       }
     }
@@ -168,7 +179,7 @@ export function createStore<T extends { id: string }>(config: StoreConfig<T>) {
         setError(null)
         return true
       } catch (e) {
-        setError(errorMessage(e))
+        { const msg = errorMessage(e); handleAuthFailure(msg); setError(msg) }
         return false
       }
     }

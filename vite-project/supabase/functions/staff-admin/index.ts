@@ -39,6 +39,15 @@ function waNumber(phone: string): string {
   return phone.replace(/[^\d]/g, '')
 }
 
+/** Country code optional — bare 10-digit numbers are assumed Indian (+91). */
+function normalizePhone(input: string): string | null {
+  const compact = input.replace(/[\s()-]/g, '')
+  if (/^\+\d{8,15}$/.test(compact)) return compact
+  if (/^\d{10}$/.test(compact)) return `+91${compact}`
+  if (/^\d{11,15}$/.test(compact)) return `+${compact}`
+  return null
+}
+
 interface WhatsAppConfig {
   phoneNumberId: string
   accessToken: string
@@ -130,14 +139,14 @@ Deno.serve(async req => {
   // ----------------------------------------------------------
   if (body.action === 'invite') {
     const fullName = String(body.full_name ?? '').trim()
-    const phone = String(body.phone ?? '').trim()
+    const phone = normalizePhone(String(body.phone ?? ''))
     const email = String(body.email ?? '').trim() || null
     const role = body.role === 'admin' ? 'admin' : 'therapist'
     const specialty = String(body.specialty ?? '').trim() || null
 
     if (!fullName) return json(400, { error: 'Full name is required' })
-    if (!/^\+\d{8,15}$/.test(phone.replace(/[\s-]/g, ''))) {
-      return json(400, { error: 'Phone must be in international format, e.g. +919876543210' })
+    if (!phone) {
+      return json(400, { error: 'Enter a valid mobile number, e.g. 9876543210 or +919876543210' })
     }
 
     // Admin may set the password directly; otherwise one is generated and
@@ -248,6 +257,55 @@ Deno.serve(async req => {
       whatsapp_sent: whatsapp.sent,
       whatsapp_error: whatsapp.error,
     })
+  }
+
+  // ----------------------------------------------------------
+  // DELETE — removes the auth account too, so the same phone
+  // can be re-added later (a profile-only delete leaves an
+  // orphaned login that blocks re-invites)
+  // ----------------------------------------------------------
+  if (body.action === 'delete') {
+    const profileId = String(body.profile_id ?? '')
+    const { data: profile } = await admin
+      .from('profiles')
+      .select('id, user_id')
+      .eq('id', profileId)
+      .single()
+    if (!profile) return json(404, { error: 'Staff member not found' })
+    if (profile.user_id === caller.id) {
+      return json(400, { error: 'You cannot delete your own account' })
+    }
+    const { error: deleteError } = await admin.auth.admin.deleteUser(profile.user_id)
+    if (deleteError) return json(400, { error: deleteError.message })
+    return json(200, { ok: true })
+  }
+
+  // ----------------------------------------------------------
+  // UPDATE PHONE — the phone is the login identity, so it must
+  // change on the auth account and the profile together
+  // ----------------------------------------------------------
+  if (body.action === 'update_phone') {
+    const profileId = String(body.profile_id ?? '')
+    const phone = String(body.phone ?? '').replace(/[\s-]/g, '')
+    if (!/^\+\d{8,15}$/.test(phone)) {
+      return json(400, { error: 'Phone must be in international format, e.g. +919876543210' })
+    }
+    const { data: profile } = await admin
+      .from('profiles')
+      .select('id, user_id')
+      .eq('id', profileId)
+      .single()
+    if (!profile) return json(404, { error: 'Staff member not found' })
+
+    const { error: authError } = await admin.auth.admin.updateUserById(profile.user_id, {
+      phone,
+      phone_confirm: true,
+    })
+    if (authError) return json(400, { error: authError.message })
+
+    const { error: profileError } = await admin.from('profiles').update({ phone }).eq('id', profile.id)
+    if (profileError) return json(400, { error: profileError.message })
+    return json(200, { ok: true })
   }
 
   // ----------------------------------------------------------

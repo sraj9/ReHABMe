@@ -57,7 +57,7 @@ export default function PatientForm() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const isEdit = !!id && id !== 'new'
-  const { patients, addPatient, updatePatient } = usePatientsContext()
+  const { patients, addPatient, updatePatient, error: storeError } = usePatientsContext()
   const toast = useToast()
 
   const existingPatient = isEdit ? patients.find(p => p.id === id) : null
@@ -331,7 +331,10 @@ export default function PatientForm() {
 
         {/* Submit */}
         {submitError && (
-          <p className="text-sm text-red-600 text-right">{submitError}</p>
+          <p className="text-sm text-red-600 text-right">
+            {submitError}
+            {storeError ? ` (${storeError})` : ''}
+          </p>
         )}
         <div className="flex justify-end gap-3 pb-4">
           <Button variant="outline" type="button" onClick={() => navigate(isEdit ? `/patients/${id}` : '/patients')}>

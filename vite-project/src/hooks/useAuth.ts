@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, createContext, useContext } from 'react'
 import type { User, Session } from '@supabase/supabase-js'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { normalizePhone } from '../lib/phone'
 import type { StaffProfile } from '../lib/types'
 
 interface AuthContextType {
@@ -44,20 +45,13 @@ const DEMO_PROFILE: StaffProfile = {
 }
 
 /**
- * The login form accepts a phone number or an email. Phone sign-in expects
- * international format; bare 10-digit numbers are assumed to be Indian (+91).
+ * The login form accepts a phone number or an email. Country code is
+ * optional for phones — bare 10-digit numbers are assumed Indian (+91).
  */
 export function normalizeIdentifier(identifier: string): { phone: string } | { email: string } {
   const trimmed = identifier.trim()
-  const compact = trimmed.replace(/[\s-]/g, '')
-  if (/^\+?\d{8,15}$/.test(compact)) {
-    const withCountry = compact.startsWith('+')
-      ? compact
-      : compact.length === 10
-        ? `+91${compact}`
-        : `+${compact}`
-    return { phone: withCountry }
-  }
+  const phone = normalizePhone(trimmed)
+  if (phone && !trimmed.includes('@')) return { phone }
   return { email: trimmed }
 }
 
