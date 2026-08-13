@@ -1,10 +1,12 @@
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Save, User, Phone, Shield, Stethoscope } from 'lucide-react'
+import { ArrowLeft, Camera, Save, ScanLine, Upload, User, Phone, Shield, Stethoscope } from 'lucide-react'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import { usePatientsContext } from '../../context/PatientsContext'
 import { useToast } from '../../context/ToastContext'
+import { scanAssessmentSheet } from '../../lib/scanPatient'
+import { isSupabaseConfigured } from '../../lib/supabase'
 import type { Gender } from '../../lib/types'
 
 interface FormData {
@@ -93,6 +95,48 @@ export default function PatientForm() {
   const [errors, setErrors] = useState<Partial<FormData>>({})
   const [saving, setSaving] = useState(false)
   const [submitError, setSubmitError] = useState('')
+  const [scanning, setScanning] = useState(false)
+  const [scanError, setScanError] = useState('')
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+  const uploadInputRef = useRef<HTMLInputElement>(null)
+
+  const handleScanFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-selecting the same file
+    if (!file) return
+    setScanning(true)
+    setScanError('')
+    const result = await scanAssessmentSheet(file)
+    setScanning(false)
+    if (!result.ok || !result.fields) {
+      setScanError(result.error || 'Could not read the sheet — try a clearer photo.')
+      return
+    }
+    const fields = result.fields
+    let filled = 0
+    setForm(f => {
+      const next = { ...f }
+      for (const key of Object.keys(defaultForm) as (keyof FormData)[]) {
+        if (key === 'gender') continue
+        const value = fields[key]
+        if (typeof value === 'string' && value.trim()) {
+          next[key] = value.trim() as FormData[typeof key]
+          filled++
+        }
+      }
+      if (fields.gender) {
+        next.gender = fields.gender
+        filled++
+      }
+      return next
+    })
+    setErrors({})
+    if (filled === 0) {
+      setScanError('No details could be read from that image — try a clearer photo of the sheet.')
+    } else {
+      toast.success(`${filled} field${filled === 1 ? '' : 's'} filled from the sheet — please review before saving`)
+    }
+  }
 
   const update = (field: keyof FormData, value: string) => {
     setForm(f => ({ ...f, [field]: value }))
@@ -165,6 +209,66 @@ export default function PatientForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Scan assessment sheet */}
+        {!isEdit && isSupabaseConfigured && (
+          <Card>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="flex items-center gap-2 flex-1">
+                <div className="p-1.5 bg-[#b7f383]/40 rounded-lg">
+                  <ScanLine size={15} className="text-[#3d9cd6]" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Have an assessment sheet?</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Snap a photo or upload a scan — the details below will be filled in automatically for you to review.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  loading={scanning}
+                  icon={<Camera size={14} />}
+                  onClick={() => cameraInputRef.current?.click()}
+                >
+                  Take Photo
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  loading={scanning}
+                  icon={<Upload size={14} />}
+                  onClick={() => uploadInputRef.current?.click()}
+                >
+                  Upload
+                </Button>
+              </div>
+            </div>
+            {scanning && (
+              <p className="text-xs text-[#3d9cd6] mt-3">Reading the sheet — this takes a few seconds…</p>
+            )}
+            {scanError && <p className="text-xs text-red-600 mt-3">{scanError}</p>}
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              aria-label="Take a photo of the assessment sheet"
+              onChange={handleScanFile}
+            />
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              aria-label="Upload an image of the assessment sheet"
+              onChange={handleScanFile}
+            />
+          </Card>
+        )}
+
         {/* Personal Information */}
         <Card>
           <div className="flex items-center gap-2 mb-5">
