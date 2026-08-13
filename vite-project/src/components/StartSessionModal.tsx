@@ -32,6 +32,12 @@ export default function StartSessionModal({ onClose, defaultPatientId }: StartSe
   const activePackage = patientId ? activePackageFor(patientId, packages, sessions) : undefined
   const remaining = activePackage ? sessionsRemaining(activePackage, sessions) : 0
 
+  // One session per patient per day (also enforced by the database)
+  const todayKey = new Date().toDateString()
+  const sessionToday = patientId
+    ? sessions.find(s => s.patient_id === patientId && new Date(s.session_at).toDateString() === todayKey)
+    : undefined
+
   const handleStart = async () => {
     if (!patientId) {
       setError('Select a patient')
@@ -57,7 +63,7 @@ export default function StartSessionModal({ onClose, defaultPatientId }: StartSe
     })
     setSaving(false)
     if (!session) {
-      setError('Could not log the session. Please try again.')
+      setError('Could not log the session — the patient may already have one today.')
       return
     }
     if (activePackage) {
@@ -96,7 +102,17 @@ export default function StartSessionModal({ onClose, defaultPatientId }: StartSe
             </select>
           </div>
 
-          {patientId && (
+          {patientId && sessionToday && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <p className="text-sm font-medium text-red-700">Session already logged today</p>
+              <p className="text-xs text-red-600 mt-0.5">
+                Logged at {new Date(sessionToday.session_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                {sessionToday.therapist?.full_name ? ` by ${sessionToday.therapist.full_name}` : ''} — only one session per patient per day.
+              </p>
+            </div>
+          )}
+
+          {patientId && !sessionToday && (
             activePackage ? (
               <div className="bg-[#3d9cd6]/5 border border-[#3d9cd6]/20 rounded-xl px-4 py-3">
                 <p className="text-sm font-semibold text-gray-900">{activePackage.name}</p>
@@ -135,7 +151,7 @@ export default function StartSessionModal({ onClose, defaultPatientId }: StartSe
         </div>
         <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button loading={saving} icon={<Play size={14} />} onClick={handleStart}>
+          <Button loading={saving} disabled={!!sessionToday} icon={<Play size={14} />} onClick={handleStart}>
             Log Session
           </Button>
         </div>
