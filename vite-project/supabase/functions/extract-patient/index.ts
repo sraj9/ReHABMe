@@ -6,7 +6,14 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
-const GEMINI_MODEL = 'gemini-2.5-flash'
+// Tried in order — Google retires model names and free-tier capacity for a
+// model can spike; on 404/429/503 the next one is tried.
+const GEMINI_MODELS = [
+  'gemini-3.6-flash',
+  'gemini-3.7-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-flash-lite-latest',
+]
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -111,39 +118,48 @@ Deno.serve(async req => {
   }
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
-      {
-        method: 'POST',
-        headers: {
-          'x-goog-api-key': apiKey,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { inlineData: { mimeType: mediaType, data: image } },
-                { text: EXTRACTION_PROMPT },
-              ],
-            },
+    const requestBody = JSON.stringify({
+      contents: [
+        {
+          parts: [
+            { inlineData: { mimeType: mediaType, data: image } },
+            { text: EXTRACTION_PROMPT },
           ],
-          generationConfig: {
-            temperature: 0.2,
-            responseMimeType: 'application/json',
-            responseSchema: PATIENT_SCHEMA,
-          },
-        }),
-      }
-    )
+        },
+      ],
+      generationConfig: {
+        temperature: 0.2,
+        responseMimeType: 'application/json',
+        responseSchema: PATIENT_SCHEMA,
+      },
+    })
 
-    if (res.status === 429) {
-      return json(429, { error: 'Scan limit reached for the moment — wait a minute and try again.' })
-    }
-    if (!res.ok) {
+    let res: Response | undefined
+    let lastStatus = 0
+    for (const model of GEMINI_MODELS) {
+      res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+          method: 'POST',
+          headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
+          body: requestBody,
+        }
+      )
+      if (res.ok) break
+      lastStatus = res.status
       const detail = await res.text()
-      console.error(`Gemini API ${res.status}:`, detail.slice(0, 500))
-      return json(502, { error: `Could not read the sheet (AI service error ${res.status}).` })
+      console.error(`Gemini ${model} ${res.status}:`, detail.slice(0, 300))
+      // Retired model, rate limit, or capacity spike — try the next model
+      if (![404, 429, 503].includes(res.status)) {
+        return json(502, { error: `Could not read the sheet (AI service error ${res.status}).` })
+      }
+      res = undefined
+    }
+    if (!res) {
+      if (lastStatus === 429) {
+        return json(429, { error: 'Scan limit reached for the moment — wait a minute and try again.' })
+      }
+      return json(503, { error: 'The AI service is busy right now — wait a minute and try again.' })
     }
 
     const data = await res.json()

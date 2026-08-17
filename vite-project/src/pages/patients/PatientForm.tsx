@@ -113,23 +113,23 @@ export default function PatientForm() {
       return
     }
     const fields = result.fields
+    // Collect the updates first — counting inside the setForm updater would
+    // read 0 because React applies the updater after this handler returns
+    const updates: Partial<FormData> = {}
     let filled = 0
-    setForm(f => {
-      const next = { ...f }
-      for (const key of Object.keys(defaultForm) as (keyof FormData)[]) {
-        if (key === 'gender') continue
-        const value = fields[key]
-        if (typeof value === 'string' && value.trim()) {
-          next[key] = value.trim() as FormData[typeof key]
-          filled++
-        }
-      }
-      if (fields.gender) {
-        next.gender = fields.gender
+    for (const key of Object.keys(defaultForm) as (keyof FormData)[]) {
+      if (key === 'gender') continue
+      const value = fields[key]
+      if (typeof value === 'string' && value.trim()) {
+        updates[key] = value.trim()
         filled++
       }
-      return next
-    })
+    }
+    if (fields.gender) {
+      updates.gender = fields.gender
+      filled++
+    }
+    setForm(f => ({ ...f, ...updates }))
     setErrors({})
     if (filled === 0) {
       setScanError('No details could be read from that image — try a clearer photo of the sheet.')
