@@ -1,10 +1,12 @@
 // extract-patient edge function
-// Reads a photographed/uploaded patient assessment sheet with Claude vision
-// and returns the patient's details as structured fields for the Add Patient
-// form. Requires the ANTHROPIC_API_KEY function secret.
+// Reads a photographed/uploaded patient assessment sheet with Google's
+// Gemini vision model (free tier) and returns the patient's details as
+// structured fields for the Add Patient form.
+// Requires the GEMINI_API_KEY function secret (free key from aistudio.google.com).
 
-import Anthropic from 'npm:@anthropic-ai/sdk'
 import { createClient } from 'npm:@supabase/supabase-js@2'
+
+const GEMINI_MODEL = 'gemini-2.5-flash'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -26,14 +28,15 @@ function json(status: number, body: unknown): Response {
 
 const ALLOWED_MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 
-// Every field nullable — the sheet may only carry a subset
-const nullableString = { type: ['string', 'null'] }
+// Gemini structured-output schema — every field nullable since the sheet
+// may only carry a subset
+const nullableString = { type: 'STRING', nullable: true }
 const PATIENT_SCHEMA = {
-  type: 'object',
+  type: 'OBJECT',
   properties: {
     full_name: nullableString,
     date_of_birth: { ...nullableString, description: 'YYYY-MM-DD' },
-    gender: { type: ['string', 'null'], enum: ['male', 'female', 'other', null] },
+    gender: { type: 'STRING', enum: ['male', 'female', 'other'], nullable: true },
     phone: nullableString,
     email: nullableString,
     address: nullableString,
@@ -59,7 +62,6 @@ const PATIENT_SCHEMA = {
     'referring_physician', 'primary_diagnosis', 'medical_history', 'allergies',
     'medications', 'notes',
   ],
-  additionalProperties: false,
 }
 
 const EXTRACTION_PROMPT = `This is a photo or scan of a patient assessment/intake sheet from a physiotherapy clinic in India. Extract the patient's details into the given fields.
@@ -89,9 +91,9 @@ Deno.serve(async req => {
     .single()
   if (!callerProfile) return json(403, { error: 'Staff access required' })
 
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
+  const apiKey = Deno.env.get('GEMINI_API_KEY')
   if (!apiKey) {
-    return json(500, { error: 'Scanning is not configured yet — ask the admin to set the ANTHROPIC_API_KEY secret.' })
+    return json(500, { error: 'Scanning is not configured yet — ask the admin to set the GEMINI_API_KEY secret.' })
   }
 
   let body: { image?: string; media_type?: string }
@@ -108,50 +110,55 @@ Deno.serve(async req => {
     return json(400, { error: 'Unsupported image type — use a JPEG or PNG photo of the sheet' })
   }
 
-  const anthropic = new Anthropic({ apiKey })
-
   try {
-    const response = await anthropic.beta.messages.create({
-      model: 'claude-opus-5',
-      max_tokens: 16000,
-      // Refusal fallback: if a safety classifier declines, the request is
-      // re-served by Anthropic's recommended fallback model in the same call
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-      output_config: {
-        effort: 'low',
-        format: { type: 'json_schema', schema: PATIENT_SCHEMA },
-      },
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: mediaType, data: image },
-            },
-            { type: 'text', text: EXTRACTION_PROMPT },
-          ],
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'x-goog-api-key': apiKey,
+          'Content-Type': 'application/json',
         },
-      ],
-      // deno-lint-ignore no-explicit-any
-    } as any)
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { inlineData: { mimeType: mediaType, data: image } },
+                { text: EXTRACTION_PROMPT },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.2,
+            responseMimeType: 'application/json',
+            responseSchema: PATIENT_SCHEMA,
+          },
+        }),
+      }
+    )
 
-    if (response.stop_reason === 'refusal') {
+    if (res.status === 429) {
+      return json(429, { error: 'Scan limit reached for the moment — wait a minute and try again.' })
+    }
+    if (!res.ok) {
+      const detail = await res.text()
+      console.error(`Gemini API ${res.status}:`, detail.slice(0, 500))
+      return json(502, { error: `Could not read the sheet (AI service error ${res.status}).` })
+    }
+
+    const data = await res.json()
+    const candidate = data?.candidates?.[0]
+    const text: string | undefined = candidate?.content?.parts?.find(
+      (p: { text?: string }) => typeof p.text === 'string'
+    )?.text
+
+    if (!text) {
+      const reason = candidate?.finishReason ?? data?.promptFeedback?.blockReason ?? 'no output'
+      console.error('Gemini returned no text:', reason)
       return json(422, { error: 'The image could not be processed. Try a clearer photo of the assessment sheet.' })
     }
-    if (response.stop_reason === 'max_tokens') {
-      return json(422, { error: 'The sheet could not be read completely — try again with a clearer photo.' })
-    }
 
-    const textBlock = response.content.find(
-      (b: { type: string }) => b.type === 'text'
-    ) as { text: string } | undefined
-    if (!textBlock) {
-      return json(422, { error: 'No details could be read from the image.' })
-    }
-
-    const fields = JSON.parse(textBlock.text)
+    const fields = JSON.parse(text)
     return json(200, { ok: true, fields })
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
