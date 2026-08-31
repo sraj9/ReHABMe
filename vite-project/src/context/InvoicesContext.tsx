@@ -1,6 +1,6 @@
 import React from 'react'
 import { createStore } from '../lib/dataStore'
-import { supabase } from '../lib/supabase'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { mockInvoices } from '../lib/mockData'
 import type { Invoice } from '../lib/types'
 
@@ -63,12 +63,38 @@ export function InvoicesProvider({ children }: { children: React.ReactNode }) {
 
 export function useInvoicesContext() {
   const { items, loading, error, add, update, remove, refresh } = store.useStore()
+
+  // Editing a bill spans two tables: replace its line items, then update the
+  // invoice row — the re-select in update() picks up the trigger-recalculated
+  // totals along with the new items.
+  const editInvoice = async (invoice: Invoice): Promise<Invoice | null> => {
+    if (isSupabaseConfigured) {
+      const { error: delError } = await supabase
+        .from('invoice_items')
+        .delete()
+        .eq('invoice_id', invoice.id)
+      if (delError) return null
+      if (invoice.items.length > 0) {
+        const rows = invoice.items.map(item => ({
+          invoice_id: invoice.id,
+          description: item.description,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+        }))
+        const { error: insError } = await supabase.from('invoice_items').insert(rows)
+        if (insError) return null
+      }
+    }
+    return update(invoice)
+  }
+
   return {
     invoices: items,
     loading,
     error,
     addInvoice: add,
     updateInvoice: update,
+    editInvoice,
     deleteInvoice: remove,
     refresh,
   }

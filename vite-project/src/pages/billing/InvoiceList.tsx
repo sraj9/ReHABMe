@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { format, parseISO, addDays } from 'date-fns'
-import { Plus, Search, IndianRupee, TrendingUp, Clock, AlertCircle, Trash2, Printer } from 'lucide-react'
+import { Plus, Search, IndianRupee, TrendingUp, Clock, AlertCircle, Trash2, Printer, Pencil } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import Badge, { getInvoiceStatusBadge } from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
@@ -13,6 +13,7 @@ import { useInvoicesContext } from '../../context/InvoicesContext'
 import { usePatientsContext } from '../../context/PatientsContext'
 import { usePaymentsContext } from '../../context/PaymentsContext'
 import { useToast } from '../../context/ToastContext'
+import { useAuth } from '../../hooks/useAuth'
 import { formatCurrency } from '../../lib/format'
 import { invoiceBalance, paidForInvoice } from '../../lib/ledger'
 import { printInvoice } from '../../lib/invoicePrint'
@@ -21,7 +22,9 @@ import type { Invoice, InvoiceStatus } from '../../lib/types'
 const PAGE_SIZE = 10
 
 export default function InvoiceList() {
-  const { invoices, loading, addInvoice, updateInvoice, deleteInvoice } = useInvoicesContext()
+  const { invoices, loading, addInvoice, updateInvoice, editInvoice, deleteInvoice } = useInvoicesContext()
+  const { profile } = useAuth()
+  const isAdmin = profile?.role === 'admin'
   const toast = useToast()
   const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState('')
@@ -31,6 +34,7 @@ export default function InvoiceList() {
   const [page, setPage] = useState(1)
   const [deleteTarget, setDeleteTarget] = useState<Invoice | null>(null)
   const [paymentTarget, setPaymentTarget] = useState<Invoice | null>(null)
+  const [editTarget, setEditTarget] = useState<Invoice | null>(null)
   const { payments } = usePaymentsContext()
   const [prefillPatientId, setPrefillPatientId] = useState<string | undefined>(() =>
     searchParams.get('new') === '1' ? searchParams.get('patient') ?? undefined : undefined
@@ -244,6 +248,16 @@ export default function InvoiceList() {
                             <IndianRupee size={13} />
                           </button>
                         )}
+                        {isAdmin && (
+                          <button
+                            onClick={() => setEditTarget(inv)}
+                            className="p-1 text-gray-400 hover:text-[#3d9cd6] transition-colors rounded"
+                            title="Edit invoice"
+                            aria-label="Edit invoice"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                        )}
                         <button
                           onClick={() => handlePrint(inv)}
                           className="p-1 text-gray-400 hover:text-[#3d9cd6] transition-colors rounded"
@@ -298,6 +312,17 @@ export default function InvoiceList() {
           defaultPatientId={prefillPatientId}
         />
       )}
+
+      {/* Edit an existing bill (admin only) */}
+      {editTarget && (
+        <InvoiceFormModal
+          onClose={() => setEditTarget(null)}
+          addInvoice={addInvoice}
+          invoiceCount={invoices.length}
+          editInvoice={editTarget}
+          onEditSave={editInvoice}
+        />
+      )}
     </div>
   )
 }
@@ -307,23 +332,35 @@ interface InvoiceFormModalProps {
   addInvoice: (invoice: Invoice) => Promise<Invoice | null>
   invoiceCount: number
   defaultPatientId?: string
+  /** When set, the modal edits this bill instead of creating a new one */
+  editInvoice?: Invoice
+  onEditSave?: (invoice: Invoice) => Promise<Invoice | null>
 }
 
-function InvoiceFormModal({ onClose, addInvoice, invoiceCount, defaultPatientId }: InvoiceFormModalProps) {
+function InvoiceFormModal({ onClose, addInvoice, invoiceCount, defaultPatientId, editInvoice, onEditSave }: InvoiceFormModalProps) {
   const { patients } = usePatientsContext()
   const toast = useToast()
+  const isEdit = !!editInvoice
 
   const today = new Date().toISOString().split('T')[0]
 
   const [form, setForm] = useState({
-    patient_id: defaultPatientId ?? '',
-    issue_date: today,
-    due_date: addDays(new Date(), 30).toISOString().split('T')[0],
-    tax_rate: '0',
-    discount_amount: '0',
-    notes: '',
+    patient_id: editInvoice?.patient_id ?? defaultPatientId ?? '',
+    issue_date: editInvoice?.issue_date ?? today,
+    due_date: editInvoice?.due_date ?? addDays(new Date(), 30).toISOString().split('T')[0],
+    tax_rate: String(editInvoice?.tax_rate ?? '0'),
+    discount_amount: String(editInvoice?.discount_amount ?? '0'),
+    notes: editInvoice?.notes ?? '',
   })
-  const [items, setItems] = useState([{ description: '', quantity: 1, unit_price: 0 }])
+  const [items, setItems] = useState(() =>
+    editInvoice && editInvoice.items.length > 0
+      ? editInvoice.items.map(item => ({
+          description: item.description,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+        }))
+      : [{ description: '', quantity: 1, unit_price: 0 }]
+  )
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [submitError, setSubmitError] = useState('')
@@ -355,6 +392,38 @@ function InvoiceFormModal({ onClose, addInvoice, invoiceCount, defaultPatientId 
     setSaving(true)
     setSubmitError('')
     const now = new Date().toISOString()
+
+    if (isEdit && editInvoice && onEditSave) {
+      const result = await onEditSave({
+        ...editInvoice,
+        issue_date: form.issue_date || editInvoice.issue_date,
+        due_date: form.due_date || editInvoice.due_date,
+        tax_rate: taxRate,
+        tax_amount: taxAmount,
+        subtotal,
+        discount_amount: discountAmount,
+        total_amount: totalAmount,
+        notes: form.notes,
+        items: items.map((item, i) => ({
+          id: `item-${Date.now()}-${i}`,
+          invoice_id: editInvoice.id,
+          description: item.description,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          total: item.quantity * item.unit_price,
+        })),
+        updated_at: now,
+      })
+      setSaving(false)
+      if (!result) {
+        setSubmitError('Could not save the changes. Please check your connection and try again.')
+        return
+      }
+      toast.success(`Invoice ${result.invoice_number} updated`)
+      onClose()
+      return
+    }
+
     const invoiceId = `inv-${Date.now()}`
 
     const result = await addInvoice({
@@ -401,7 +470,9 @@ function InvoiceFormModal({ onClose, addInvoice, invoiceCount, defaultPatientId 
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-3xl bg-white rounded-2xl shadow-xl flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">Create Invoice</h2>
+          <h2 className="text-lg font-semibold text-gray-900">
+            {isEdit ? `Edit Invoice ${editInvoice?.invoice_number}` : 'Create Invoice'}
+          </h2>
           <button onClick={onClose} aria-label="Close dialog" className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">✕</button>
         </div>
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
@@ -410,8 +481,9 @@ function InvoiceFormModal({ onClose, addInvoice, invoiceCount, defaultPatientId 
               <label className={labelClass} htmlFor="inv-patient_id">Patient *</label>
               <select
                 id="inv-patient_id"
-                className={fieldClass(!!errors.patient_id)}
+                className={`${fieldClass(!!errors.patient_id)} ${isEdit ? 'bg-gray-50 text-gray-500' : ''}`}
                 value={form.patient_id}
+                disabled={isEdit}
                 onChange={e => { setForm(f => ({ ...f, patient_id: e.target.value })); setErrors(er => ({ ...er, patient_id: '' })) }}
               >
                 <option value="">Select patient...</option>
@@ -496,7 +568,7 @@ function InvoiceFormModal({ onClose, addInvoice, invoiceCount, defaultPatientId 
         <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-3">
           {submitError && <p className="text-xs text-red-600 mr-auto">{submitError}</p>}
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button loading={saving} onClick={handleSave}>Create Invoice</Button>
+          <Button loading={saving} onClick={handleSave}>{isEdit ? 'Save Changes' : 'Create Invoice'}</Button>
         </div>
       </div>
     </div>
