@@ -6,6 +6,7 @@ import Card from '../../components/ui/Card'
 import { usePatientsContext } from '../../context/PatientsContext'
 import { useToast } from '../../context/ToastContext'
 import { scanAssessmentSheet } from '../../lib/scanPatient'
+import { ALL_DIAGNOSES, DIAGNOSIS_GROUPS } from '../../lib/diagnoses'
 import { isSupabaseConfigured } from '../../lib/supabase'
 import type { Gender } from '../../lib/types'
 
@@ -82,6 +83,24 @@ export default function PatientForm() {
   const [submitError, setSubmitError] = useState('')
   const [scanning, setScanning] = useState(false)
   const [scanError, setScanError] = useState('')
+
+  // Primary diagnosis is a multi-select: chips stored joined with '; '
+  // (names themselves can contain commas)
+  const [diagnosisInput, setDiagnosisInput] = useState('')
+  const diagnosisChips = form.primary_diagnosis ? form.primary_diagnosis.split('; ').filter(Boolean) : []
+
+  const addDiagnosis = (value: string) => {
+    const d = value.trim()
+    if (!d) return
+    if (!diagnosisChips.includes(d)) {
+      update('primary_diagnosis', [...diagnosisChips, d].join('; '))
+    }
+    setDiagnosisInput('')
+  }
+
+  const removeDiagnosis = (value: string) => {
+    update('primary_diagnosis', diagnosisChips.filter(d => d !== value).join('; '))
+  }
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const uploadInputRef = useRef<HTMLInputElement>(null)
 
@@ -354,8 +373,50 @@ export default function PatientForm() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
-              <label className={labelClass} htmlFor="patient-primary_diagnosis">Primary Diagnosis</label>
-              <input id="patient-primary_diagnosis" className={fieldClass} value={form.primary_diagnosis} onChange={e => update('primary_diagnosis', e.target.value)} placeholder="e.g. Lumbar Disc Herniation" />
+              <label className={labelClass} htmlFor="patient-primary_diagnosis">Diagnosis</label>
+              {diagnosisChips.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {diagnosisChips.map(d => (
+                    <span key={d} className="inline-flex items-center gap-1 bg-[#3d9cd6]/10 text-[#2e7cad] text-xs font-medium pl-2.5 pr-1 py-1 rounded-full">
+                      {d}
+                      <button
+                        type="button"
+                        onClick={() => removeDiagnosis(d)}
+                        aria-label={`Remove ${d}`}
+                        className="p-0.5 rounded-full hover:bg-[#3d9cd6]/20"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <input
+                id="patient-primary_diagnosis"
+                className={fieldClass}
+                list="diagnosis-options"
+                value={diagnosisInput}
+                onChange={e => {
+                  const value = e.target.value
+                  // Picking from the dropdown fires onChange with the full name — add it as a chip
+                  if (ALL_DIAGNOSES.includes(value)) addDiagnosis(value)
+                  else setDiagnosisInput(value)
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    addDiagnosis(diagnosisInput)
+                  }
+                }}
+                onBlur={() => addDiagnosis(diagnosisInput)}
+                placeholder="Search and pick — repeat to add more, or type your own and press Enter"
+              />
+              <datalist id="diagnosis-options">
+                {DIAGNOSIS_GROUPS.flatMap(g => g.diagnoses
+                  .filter(d => !diagnosisChips.includes(d))
+                  .map(d => <option key={`${g.group}-${d}`} value={d}>{g.group}</option>)
+                )}
+              </datalist>
             </div>
             <div className="sm:col-span-2">
               <label className={labelClass} htmlFor="patient-medical_history">Medical History</label>
