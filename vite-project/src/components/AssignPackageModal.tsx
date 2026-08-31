@@ -12,13 +12,26 @@ interface AssignPackageModalProps {
   onClose: () => void
 }
 
+const PACKAGE_PRESETS = [
+  { key: 'half', name: 'Half (13 Days)', sessions: '13' },
+  { key: 'full', name: 'Full (26 Days)', sessions: '26' },
+] as const
+
 export default function AssignPackageModal({ patient, onClose }: AssignPackageModalProps) {
   const { addPackage } = usePackagesContext()
   const { invoices, addInvoice } = useInvoicesContext()
   const toast = useToast()
   const today = new Date().toISOString().split('T')[0]
 
-  const [form, setForm] = useState({ name: '', total_sessions: '10', price: '', purchased_at: today })
+  const [preset, setPreset] = useState<'half' | 'full' | 'custom'>('half')
+  const [form, setForm] = useState({ name: '', total_sessions: '13', price: '', purchased_at: today })
+
+  const choosePreset = (value: string) => {
+    const key = value as 'half' | 'full' | 'custom'
+    setPreset(key)
+    const found = PACKAGE_PRESETS.find(p => p.key === key)
+    if (found) setForm(f => ({ ...f, total_sessions: found.sessions }))
+  }
   const [createInvoice, setCreateInvoice] = useState(true)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -26,7 +39,8 @@ export default function AssignPackageModal({ patient, onClose }: AssignPackageMo
   const handleAssign = async () => {
     const totalSessions = parseInt(form.total_sessions)
     const price = Math.round(parseFloat(form.price || '0') * 100) / 100
-    const name = form.name.trim() || `${totalSessions} Session Package`
+    const presetName = PACKAGE_PRESETS.find(p => p.key === preset)?.name
+    const name = presetName ?? (form.name.trim() || `${totalSessions} Session Package`)
     if (!Number.isFinite(totalSessions) || totalSessions <= 0) {
       setError('Enter a valid number of sessions')
       return
@@ -123,9 +137,20 @@ export default function AssignPackageModal({ patient, onClose }: AssignPackageMo
             </div>
           )}
           <div>
-            <label htmlFor="package-name" className={labelClass}>Package Name</label>
-            <input id="package-name" className={fieldClass} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Physiotherapy 10-Session Package" />
+            <label htmlFor="package-preset" className={labelClass}>Package *</label>
+            <select id="package-preset" className={fieldClass} value={preset} onChange={e => choosePreset(e.target.value)}>
+              {PACKAGE_PRESETS.map(p => (
+                <option key={p.key} value={p.key}>{p.name}</option>
+              ))}
+              <option value="custom">Custom (enter name)…</option>
+            </select>
           </div>
+          {preset === 'custom' && (
+            <div>
+              <label htmlFor="package-name" className={labelClass}>Package Name</label>
+              <input id="package-name" className={fieldClass} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Physiotherapy 10-Session Package" />
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label htmlFor="package-sessions" className={labelClass}>Number of Sessions *</label>
