@@ -1,15 +1,15 @@
-// Physiotherapy diagnosis catalogue for the Primary Diagnosis field.
-// Grouped adult + pediatric lists supplied by the clinic; the form still
-// accepts free text for anything not listed.
+// Physiotherapy diagnosis catalogue for the Diagnosis field.
+// Adult + pediatric lists supplied by the clinic; the form also accepts
+// free text for anything not listed.
 
 export interface DiagnosisGroup {
   group: string
   diagnoses: string[]
 }
 
-export const DIAGNOSIS_GROUPS: DiagnosisGroup[] = [
+export const ADULT_DIAGNOSES: DiagnosisGroup[] = [
   {
-    group: "Adult: Musculoskeletal & Orthopedic \u2014 Spine",
+    group: "Musculoskeletal & Orthopedic \u2014 Spine",
     diagnoses: [
       "Cervicalgia / Neck Pain",
       "Cervical Radiculopathy",
@@ -25,7 +25,7 @@ export const DIAGNOSIS_GROUPS: DiagnosisGroup[] = [
     ],
   },
   {
-    group: "Adult: Musculoskeletal & Orthopedic \u2014 Upper Extremity",
+    group: "Musculoskeletal & Orthopedic \u2014 Upper Extremity",
     diagnoses: [
       "Adhesive Capsulitis (Frozen Shoulder)",
       "Rotator Cuff Tendinopathy / Tear",
@@ -40,7 +40,7 @@ export const DIAGNOSIS_GROUPS: DiagnosisGroup[] = [
     ],
   },
   {
-    group: "Adult: Musculoskeletal & Orthopedic \u2014 Lower Extremity",
+    group: "Musculoskeletal & Orthopedic \u2014 Lower Extremity",
     diagnoses: [
       "Hip Osteoarthritis",
       "Greater Trochanteric Pain Syndrome (GTPS) / Hip Bursitis",
@@ -56,7 +56,7 @@ export const DIAGNOSIS_GROUPS: DiagnosisGroup[] = [
     ],
   },
   {
-    group: "Adult: Neurological \u2014 Central & Peripheral Nervous System",
+    group: "Neurological \u2014 Central & Peripheral Nervous System",
     diagnoses: [
       "Stroke / Cerebrovascular Accident (CVA) (Hemiplegia / Hemiparesis)",
       "Parkinson's Disease",
@@ -70,7 +70,7 @@ export const DIAGNOSIS_GROUPS: DiagnosisGroup[] = [
     ],
   },
   {
-    group: "Adult: Post-Surgical & Traumatic Rehabilitation \u2014 Post-Operative Management",
+    group: "Post-Surgical & Traumatic Rehabilitation \u2014 Post-Operative Management",
     diagnoses: [
       "Total Knee Arthroplasty (TKA) Rehabilitation",
       "Total Hip Arthroplasty (THA) Rehabilitation",
@@ -83,7 +83,7 @@ export const DIAGNOSIS_GROUPS: DiagnosisGroup[] = [
     ],
   },
   {
-    group: "Adult: Cardiopulmonary & Respiratory \u2014 Pulmonary & Cardiac Rehab",
+    group: "Cardiopulmonary & Respiratory \u2014 Pulmonary & Cardiac Rehab",
     diagnoses: [
       "Chronic Obstructive Pulmonary Disease (COPD)",
       "Bronchial Asthma Rehabilitation",
@@ -93,7 +93,7 @@ export const DIAGNOSIS_GROUPS: DiagnosisGroup[] = [
     ],
   },
   {
-    group: "Adult: Specialized & Chronic Pain \u2014 Vestibular, Pelvic & Systemic",
+    group: "Specialized & Chronic Pain \u2014 Vestibular, Pelvic & Systemic",
     diagnoses: [
       "Benign Paroxysmal Positional Vertigo (BPPV) / Vestibular Hypofunction",
       "Temporomandibular Joint (TMJ) Dysfunction",
@@ -103,8 +103,11 @@ export const DIAGNOSIS_GROUPS: DiagnosisGroup[] = [
       "Lymphedema",
     ],
   },
+]
+
+export const PEDIATRIC_DIAGNOSES: DiagnosisGroup[] = [
   {
-    group: "Pediatric: Pediatric Neuromuscular & Congenital \u2014 Neurological & Muscle Disorders",
+    group: "Pediatric Neuromuscular & Congenital \u2014 Neurological & Muscle Disorders",
     diagnoses: [
       "Cerebral Palsy (Spastic, Dyskinetic, Ataxic, Mixed)",
       "Spina Bifida / Myelomeningocele",
@@ -115,7 +118,7 @@ export const DIAGNOSIS_GROUPS: DiagnosisGroup[] = [
     ],
   },
   {
-    group: "Pediatric: Pediatric Developmental & Genetic \u2014 Motor & Genetic Syndromes",
+    group: "Pediatric Developmental & Genetic \u2014 Motor & Genetic Syndromes",
     diagnoses: [
       "Gross Motor Developmental Delay",
       "Developmental Coordination Disorder (DCD / Dyspraxia)",
@@ -126,7 +129,7 @@ export const DIAGNOSIS_GROUPS: DiagnosisGroup[] = [
     ],
   },
   {
-    group: "Pediatric: Pediatric Orthopedic & Postural \u2014 Congenital & Growth-Related Orthopedics",
+    group: "Pediatric Orthopedic & Postural \u2014 Congenital & Growth-Related Orthopedics",
     diagnoses: [
       "Congenital Muscular Torticollis (CMT) & Plagiocephaly",
       "Congenital Talipes Equinovarus (CTEV / Clubfoot)",
@@ -141,7 +144,7 @@ export const DIAGNOSIS_GROUPS: DiagnosisGroup[] = [
     ],
   },
   {
-    group: "Pediatric: Pediatric Cardiorespiratory & Specialized \u2014 Respiratory & Neonatal Care",
+    group: "Pediatric Cardiorespiratory & Specialized \u2014 Respiratory & Neonatal Care",
     diagnoses: [
       "Cystic Fibrosis (Pediatric Airway Clearance)",
       "Bronchopulmonary Dysplasia (BPD)",
@@ -149,5 +152,3 @@ export const DIAGNOSIS_GROUPS: DiagnosisGroup[] = [
     ],
   },
 ]
-
-export const ALL_DIAGNOSES: string[] = DIAGNOSIS_GROUPS.flatMap(g => g.diagnoses)

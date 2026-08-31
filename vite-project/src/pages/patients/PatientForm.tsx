@@ -6,7 +6,7 @@ import Card from '../../components/ui/Card'
 import { usePatientsContext } from '../../context/PatientsContext'
 import { useToast } from '../../context/ToastContext'
 import { scanAssessmentSheet } from '../../lib/scanPatient'
-import { ALL_DIAGNOSES, DIAGNOSIS_GROUPS } from '../../lib/diagnoses'
+import { ADULT_DIAGNOSES, PEDIATRIC_DIAGNOSES, type DiagnosisGroup } from '../../lib/diagnoses'
 import { isSupabaseConfigured } from '../../lib/supabase'
 import type { Gender } from '../../lib/types'
 
@@ -373,7 +373,7 @@ export default function PatientForm() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
-              <label className={labelClass} htmlFor="patient-primary_diagnosis">Diagnosis</label>
+              <span className={labelClass}>Diagnosis</span>
               {diagnosisChips.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {diagnosisChips.map(d => (
@@ -391,17 +391,35 @@ export default function PatientForm() {
                   ))}
                 </div>
               )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {([
+                  ['Adult', ADULT_DIAGNOSES],
+                  ['Pediatric', PEDIATRIC_DIAGNOSES],
+                ] as [string, DiagnosisGroup[]][]).map(([label, groups]) => (
+                  <select
+                    key={label}
+                    aria-label={`Add ${label.toLowerCase()} diagnosis`}
+                    className={fieldClass}
+                    value=""
+                    onChange={e => addDiagnosis(e.target.value)}
+                  >
+                    <option value="">Add {label} diagnosis…</option>
+                    {groups.map(g => (
+                      <optgroup key={g.group} label={g.group}>
+                        {g.diagnoses.filter(d => !diagnosisChips.includes(d)).map(d => (
+                          <option key={d} value={d}>{d}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                ))}
+              </div>
               <input
                 id="patient-primary_diagnosis"
-                className={fieldClass}
-                list="diagnosis-options"
+                aria-label="Add a custom diagnosis"
+                className={`${fieldClass} mt-3`}
                 value={diagnosisInput}
-                onChange={e => {
-                  const value = e.target.value
-                  // Picking from the dropdown fires onChange with the full name — add it as a chip
-                  if (ALL_DIAGNOSES.includes(value)) addDiagnosis(value)
-                  else setDiagnosisInput(value)
-                }}
+                onChange={e => setDiagnosisInput(e.target.value)}
                 onKeyDown={e => {
                   if (e.key === 'Enter') {
                     e.preventDefault()
@@ -409,14 +427,8 @@ export default function PatientForm() {
                   }
                 }}
                 onBlur={() => addDiagnosis(diagnosisInput)}
-                placeholder="Search and pick — repeat to add more, or type your own and press Enter"
+                placeholder="Not in the lists? Type it here and press Enter"
               />
-              <datalist id="diagnosis-options">
-                {DIAGNOSIS_GROUPS.flatMap(g => g.diagnoses
-                  .filter(d => !diagnosisChips.includes(d))
-                  .map(d => <option key={`${g.group}-${d}`} value={d}>{g.group}</option>)
-                )}
-              </datalist>
             </div>
             <div className="sm:col-span-2">
               <label className={labelClass} htmlFor="patient-medical_history">Medical History</label>
