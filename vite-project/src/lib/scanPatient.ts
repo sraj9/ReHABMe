@@ -72,8 +72,16 @@ export async function scanAssessmentSheet(file: File): Promise<ScanResult> {
     return { ok: false, error: 'Could not read that image — try another photo' }
   }
 
+  // Refresh a silently-expired login before calling the server (see staffAdmin)
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) {
+    void supabase.auth.signOut()
+    return { ok: false, error: 'Your session has expired — please sign in again' }
+  }
+
   const { data, error } = await supabase.functions.invoke('extract-patient', {
     body: { image: payload.base64, media_type: payload.mediaType },
+    headers: { Authorization: `Bearer ${session.access_token}` },
   })
   if (error) {
     // Non-2xx responses carry the server's message in the response body

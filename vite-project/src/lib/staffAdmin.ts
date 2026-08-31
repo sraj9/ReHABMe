@@ -19,7 +19,19 @@ export async function staffAdmin(body: Record<string, unknown>): Promise<StaffAd
     return { ok: false, error: 'Connect Supabase to use this feature' }
   }
 
-  const { data, error } = await supabase.functions.invoke('staff-admin', { body })
+  // A silently-expired login (app left open, phone in background) would reach
+  // the server with a dead token and fail as "Not authenticated" — refresh
+  // first and send the fresh token explicitly.
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) {
+    void supabase.auth.signOut()
+    return { ok: false, error: 'Your session has expired — please sign in again' }
+  }
+
+  const { data, error } = await supabase.functions.invoke('staff-admin', {
+    body,
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  })
   if (error) {
     // Non-2xx responses carry the server's message in the response body
     const context = (error as { context?: Response }).context
