@@ -6,7 +6,7 @@ import Card from '../../components/ui/Card'
 import { usePatientsContext } from '../../context/PatientsContext'
 import { useToast } from '../../context/ToastContext'
 import { scanAssessmentSheet } from '../../lib/scanPatient'
-import { ADULT_DIAGNOSES, PEDIATRIC_DIAGNOSES, type DiagnosisGroup } from '../../lib/diagnoses'
+import { ADULT_DIAGNOSES, PEDIATRIC_DIAGNOSES } from '../../lib/diagnoses'
 import { isSupabaseConfigured } from '../../lib/supabase'
 import type { Gender } from '../../lib/types'
 
@@ -87,7 +87,19 @@ export default function PatientForm() {
   // Primary diagnosis is a multi-select: chips stored joined with '; '
   // (names themselves can contain commas)
   const [diagnosisInput, setDiagnosisInput] = useState('')
+  const [diagType, setDiagType] = useState<'adult' | 'pediatric'>('adult')
+  const [diagOpen, setDiagOpen] = useState(false)
   const diagnosisChips = form.primary_diagnosis ? form.primary_diagnosis.split('; ').filter(Boolean) : []
+
+  const diagQuery = diagnosisInput.trim().toLowerCase()
+  const diagnosisMatches = (diagType === 'adult' ? ADULT_DIAGNOSES : PEDIATRIC_DIAGNOSES)
+    .map(g => ({
+      group: g.group,
+      diagnoses: g.diagnoses.filter(
+        d => !diagnosisChips.includes(d) && (!diagQuery || d.toLowerCase().includes(diagQuery))
+      ),
+    }))
+    .filter(g => g.diagnoses.length > 0)
 
   const addDiagnosis = (value: string) => {
     const d = value.trim()
@@ -391,44 +403,63 @@ export default function PatientForm() {
                   ))}
                 </div>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {([
-                  ['Adult', ADULT_DIAGNOSES],
-                  ['Pediatric', PEDIATRIC_DIAGNOSES],
-                ] as [string, DiagnosisGroup[]][]).map(([label, groups]) => (
-                  <select
-                    key={label}
-                    aria-label={`Add ${label.toLowerCase()} diagnosis`}
-                    className={fieldClass}
-                    value=""
-                    onChange={e => addDiagnosis(e.target.value)}
+              <div className="flex gap-2 mb-2">
+                {([['adult', 'Adult'], ['pediatric', 'Pediatric']] as const).map(([key, label]) => (
+                  <button
+                    type="button"
+                    key={key}
+                    onClick={() => { setDiagType(key); setDiagOpen(true) }}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                      diagType === key
+                        ? 'bg-[#3d9cd6] text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
                   >
-                    <option value="">Add {label} diagnosis…</option>
-                    {groups.map(g => (
-                      <optgroup key={g.group} label={g.group}>
-                        {g.diagnoses.filter(d => !diagnosisChips.includes(d)).map(d => (
-                          <option key={d} value={d}>{d}</option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
+                    {label}
+                  </button>
                 ))}
               </div>
-              <input
-                id="patient-primary_diagnosis"
-                aria-label="Add a custom diagnosis"
-                className={`${fieldClass} mt-3`}
-                value={diagnosisInput}
-                onChange={e => setDiagnosisInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    addDiagnosis(diagnosisInput)
-                  }
-                }}
-                onBlur={() => addDiagnosis(diagnosisInput)}
-                placeholder="Not in the lists? Type it here and press Enter"
-              />
+              <div className="relative">
+                <input
+                  id="patient-primary_diagnosis"
+                  aria-label={`Search ${diagType} diagnoses`}
+                  className={fieldClass}
+                  value={diagnosisInput}
+                  onChange={e => { setDiagnosisInput(e.target.value); setDiagOpen(true) }}
+                  onFocus={() => setDiagOpen(true)}
+                  onBlur={() => setDiagOpen(false)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      // Enter picks the only remaining match, else adds the typed text as custom
+                      const single = diagnosisMatches.length === 1 && diagnosisMatches[0].diagnoses.length === 1
+                      addDiagnosis(single ? diagnosisMatches[0].diagnoses[0] : diagnosisInput)
+                    }
+                    if (e.key === 'Escape') setDiagOpen(false)
+                  }}
+                  placeholder={`Search ${diagType === 'adult' ? 'adult' : 'pediatric'} diagnoses — or type your own and press Enter`}
+                />
+                {diagOpen && diagnosisMatches.length > 0 && (
+                  <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-y-auto">
+                    {diagnosisMatches.map(g => (
+                      <div key={g.group}>
+                        <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">{g.group}</p>
+                        {g.diagnoses.map(d => (
+                          <button
+                            type="button"
+                            key={d}
+                            // mousedown beats the input's blur so the panel stays usable
+                            onMouseDown={e => { e.preventDefault(); addDiagnosis(d) }}
+                            className="w-full text-left px-3 py-1.5 text-sm text-gray-800 hover:bg-[#3d9cd6]/10"
+                          >
+                            {d}
+                          </button>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="sm:col-span-2">
               <label className={labelClass} htmlFor="patient-medical_history">Medical History</label>
