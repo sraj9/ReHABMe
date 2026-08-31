@@ -21,7 +21,7 @@ export default function PatientList() {
     const matchSearch =
       p.full_name.toLowerCase().includes(search.toLowerCase()) ||
       p.mrn.toLowerCase().includes(search.toLowerCase()) ||
-      p.phone.includes(search) ||
+      (p.phone ?? '').includes(search) ||
       (p.email?.toLowerCase().includes(search.toLowerCase()) ?? false)
 
     const matchStatus =
@@ -102,7 +102,7 @@ export default function PatientList() {
                 </tr>
               ) : (
                 paged.map(patient => {
-                  const age = differenceInYears(new Date(), parseISO(patient.date_of_birth))
+                  const age = patient.date_of_birth ? differenceInYears(new Date(), parseISO(patient.date_of_birth)) : null
                   return (
                     <tr
                       key={patient.id}
@@ -124,7 +124,7 @@ export default function PatientList() {
                           </div>
                           <div>
                             <p className="text-sm font-medium text-gray-900">{patient.full_name}</p>
-                            <p className="text-xs text-gray-500">{age} yrs &bull; {patient.gender}</p>
+                            <p className="text-xs text-gray-500">{age !== null ? `${age} yrs • ` : ''}{patient.gender}</p>
                           </div>
                         </div>
                       </td>
@@ -133,10 +133,12 @@ export default function PatientList() {
                       </td>
                       <td className="px-5 py-3.5">
                         <div className="space-y-0.5">
-                          <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                            <Phone size={11} className="text-gray-400" />
-                            {patient.phone}
-                          </div>
+                          {patient.phone && (
+                            <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                              <Phone size={11} className="text-gray-400" />
+                              {patient.phone}
+                            </div>
+                          )}
                           {patient.email && (
                             <div className="flex items-center gap-1.5 text-xs text-gray-500">
                               <Mail size={11} className="text-gray-400" />

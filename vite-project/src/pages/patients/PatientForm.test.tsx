@@ -22,29 +22,22 @@ function renderForm() {
 }
 
 describe('PatientForm', () => {
-  it('blocks submission and shows errors when required fields are empty', async () => {
+  it('blocks submission and shows an error when the name is empty', async () => {
     const user = userEvent.setup()
     renderForm()
 
     await user.click(screen.getAllByRole('button', { name: /create patient/i })[0])
 
     expect(screen.getByText('Full name is required')).toBeInTheDocument()
-    expect(screen.getByText('Date of birth is required')).toBeInTheDocument()
-    expect(screen.getByText('Phone number is required')).toBeInTheDocument()
     // Still on the form — no navigation happened
     expect(screen.queryByText('patient list page')).not.toBeInTheDocument()
   })
 
-  it('creates a patient and navigates to the list when required fields are filled', async () => {
+  it('creates a patient with just a name — mobile number and DOB are optional', async () => {
     const user = userEvent.setup()
-    const { container } = renderForm()
+    renderForm()
 
     await user.type(screen.getByPlaceholderText('e.g. Jane Smith'), 'Test Person')
-    // The emergency-contact phone shares this placeholder; the first match is the required phone field
-    await user.type(screen.getAllByPlaceholderText('+1 (555) 000-0000')[0], '555-0199')
-    const dob = container.querySelector<HTMLInputElement>('input[type="date"]')
-    expect(dob).not.toBeNull()
-    await user.type(dob!, '1985-06-15')
 
     await user.click(screen.getAllByRole('button', { name: /create patient/i })[0])
 

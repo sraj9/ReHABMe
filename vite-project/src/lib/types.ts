@@ -52,9 +52,9 @@ export interface Patient {
   id: string
   mrn: string // Medical Record Number
   full_name: string
-  date_of_birth: string
+  date_of_birth?: string | null
   gender: Gender
-  phone: string
+  phone?: string | null
   email?: string
   address?: string
   city?: string

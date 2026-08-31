@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Camera, Save, ScanLine, Upload, User, Phone, Shield, Stethoscope } from 'lucide-react'
+import { ArrowLeft, Camera, Save, ScanLine, Upload, User, Shield, Stethoscope } from 'lucide-react'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import { usePatientsContext } from '../../context/PatientsContext'
@@ -16,11 +16,6 @@ interface FormData {
   phone: string
   email: string
   address: string
-  city: string
-  state: string
-  zip: string
-  emergency_contact_name: string
-  emergency_contact_phone: string
   insurance_provider: string
   insurance_policy_number: string
   insurance_group_number: string
@@ -39,11 +34,6 @@ const defaultForm: FormData = {
   phone: '',
   email: '',
   address: '',
-  city: '',
-  state: '',
-  zip: '',
-  emergency_contact_name: '',
-  emergency_contact_phone: '',
   insurance_provider: '',
   insurance_policy_number: '',
   insurance_group_number: '',
@@ -68,16 +58,11 @@ export default function PatientForm() {
     if (existingPatient) {
       return {
         full_name: existingPatient.full_name,
-        date_of_birth: existingPatient.date_of_birth,
+        date_of_birth: existingPatient.date_of_birth || '',
         gender: existingPatient.gender,
-        phone: existingPatient.phone,
+        phone: existingPatient.phone || '',
         email: existingPatient.email || '',
         address: existingPatient.address || '',
-        city: existingPatient.city || '',
-        state: existingPatient.state || '',
-        zip: existingPatient.zip || '',
-        emergency_contact_name: existingPatient.emergency_contact_name || '',
-        emergency_contact_phone: existingPatient.emergency_contact_phone || '',
         insurance_provider: existingPatient.insurance_provider || '',
         insurance_policy_number: existingPatient.insurance_policy_number || '',
         insurance_group_number: existingPatient.insurance_group_number || '',
@@ -113,12 +98,13 @@ export default function PatientForm() {
       return
     }
     const fields = result.fields
+    const text = (value: string | null | undefined) => (typeof value === 'string' ? value.trim() : '')
     // Collect the updates first — counting inside the setForm updater would
     // read 0 because React applies the updater after this handler returns
     const updates: Partial<FormData> = {}
     let filled = 0
     for (const key of Object.keys(defaultForm) as (keyof FormData)[]) {
-      if (key === 'gender') continue
+      if (key === 'gender' || key === 'address' || key === 'notes') continue
       const value = fields[key]
       if (typeof value === 'string' && value.trim()) {
         updates[key] = value.trim()
@@ -127,6 +113,19 @@ export default function PatientForm() {
     }
     if (fields.gender) {
       updates.gender = fields.gender
+      filled++
+    }
+    // The form keeps a single Address field — fold scanned city/state/PIN into it
+    const addressParts = [text(fields.address), text(fields.city), text(fields.state), text(fields.zip)].filter(Boolean)
+    if (addressParts.length) {
+      updates.address = addressParts.join(', ')
+      filled++
+    }
+    // No emergency-contact fields on the form — keep what the sheet says in Notes
+    const emergency = [text(fields.emergency_contact_name), text(fields.emergency_contact_phone)].filter(Boolean).join(' ')
+    const noteParts = [text(fields.notes), emergency ? `Emergency contact: ${emergency}` : ''].filter(Boolean)
+    if (noteParts.length) {
+      updates.notes = noteParts.join(' • ')
       filled++
     }
     setForm(f => ({ ...f, ...updates }))
@@ -146,8 +145,6 @@ export default function PatientForm() {
   const validate = (): boolean => {
     const newErrors: Partial<FormData> = {}
     if (!form.full_name.trim()) newErrors.full_name = 'Full name is required'
-    if (!form.date_of_birth) newErrors.date_of_birth = 'Date of birth is required'
-    if (!form.phone.trim()) newErrors.phone = 'Phone number is required'
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -160,12 +157,18 @@ export default function PatientForm() {
 
     const now = new Date().toISOString()
     let result
+    // Blank mobile number / date of birth are stored as null (both optional,
+    // can be filled in later via Edit Patient)
+    const phone = form.phone.trim() || null
+    const dateOfBirth = form.date_of_birth || null
     if (isEdit && existingPatient) {
-      result = await updatePatient({ ...existingPatient, ...form, updated_at: now })
+      result = await updatePatient({ ...existingPatient, ...form, phone, date_of_birth: dateOfBirth, updated_at: now })
     } else {
       const nextNum = patients.length + 1
       result = await addPatient({
         ...form,
+        phone,
+        date_of_birth: dateOfBirth,
         id: `patient-${Date.now()}`,
         mrn: `RHB-${String(nextNum).padStart(6, '0')}`,
         is_active: true,
@@ -284,7 +287,7 @@ export default function PatientForm() {
               {errors.full_name && <p className={errorClass}>{errors.full_name}</p>}
             </div>
             <div>
-              <label className={labelClass} htmlFor="patient-date_of_birth">Date of Birth <span className="text-red-500">*</span></label>
+              <label className={labelClass} htmlFor="patient-date_of_birth">Date of Birth</label>
               <input id="patient-date_of_birth" type="date" className={`${fieldClass} ${errors.date_of_birth ? 'border-red-400' : ''}`} value={form.date_of_birth} onChange={e => update('date_of_birth', e.target.value)} />
               {errors.date_of_birth && <p className={errorClass}>{errors.date_of_birth}</p>}
             </div>
@@ -298,8 +301,8 @@ export default function PatientForm() {
               </select>
             </div>
             <div>
-              <label className={labelClass} htmlFor="patient-phone">Phone <span className="text-red-500">*</span></label>
-              <input id="patient-phone" className={`${fieldClass} ${errors.phone ? 'border-red-400' : ''}`} value={form.phone} onChange={e => update('phone', e.target.value)} placeholder="+1 (555) 000-0000" />
+              <label className={labelClass} htmlFor="patient-phone">Mobile Number</label>
+              <input id="patient-phone" className={`${fieldClass} ${errors.phone ? 'border-red-400' : ''}`} value={form.phone} onChange={e => update('phone', e.target.value)} placeholder="9876543210" />
               {errors.phone && <p className={errorClass}>{errors.phone}</p>}
             </div>
             <div>
@@ -307,40 +310,8 @@ export default function PatientForm() {
               <input id="patient-email" type="email" className={fieldClass} value={form.email} onChange={e => update('email', e.target.value)} placeholder="patient@email.com" />
             </div>
             <div className="sm:col-span-2 lg:col-span-3">
-              <label className={labelClass} htmlFor="patient-address">Street Address</label>
-              <input id="patient-address" className={fieldClass} value={form.address} onChange={e => update('address', e.target.value)} placeholder="123 Main Street" />
-            </div>
-            <div>
-              <label className={labelClass} htmlFor="patient-city">City</label>
-              <input id="patient-city" className={fieldClass} value={form.city} onChange={e => update('city', e.target.value)} placeholder="Springfield" />
-            </div>
-            <div>
-              <label className={labelClass} htmlFor="patient-state">State</label>
-              <input id="patient-state" className={fieldClass} value={form.state} onChange={e => update('state', e.target.value)} placeholder="IL" />
-            </div>
-            <div>
-              <label className={labelClass} htmlFor="patient-zip">ZIP Code</label>
-              <input id="patient-zip" className={fieldClass} value={form.zip} onChange={e => update('zip', e.target.value)} placeholder="62701" />
-            </div>
-          </div>
-        </Card>
-
-        {/* Emergency Contact */}
-        <Card>
-          <div className="flex items-center gap-2 mb-5">
-            <div className="p-1.5 bg-[#3d9cd6]/10 rounded-lg">
-              <Phone size={15} className="text-[#3d9cd6]" />
-            </div>
-            <h3 className="text-sm font-semibold text-gray-900">Emergency Contact</h3>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className={labelClass} htmlFor="patient-emergency_contact_name">Contact Name</label>
-              <input id="patient-emergency_contact_name" className={fieldClass} value={form.emergency_contact_name} onChange={e => update('emergency_contact_name', e.target.value)} placeholder="John Smith" />
-            </div>
-            <div>
-              <label className={labelClass} htmlFor="patient-emergency_contact_phone">Contact Phone</label>
-              <input id="patient-emergency_contact_phone" className={fieldClass} value={form.emergency_contact_phone} onChange={e => update('emergency_contact_phone', e.target.value)} placeholder="+1 (555) 000-0000" />
+              <label className={labelClass} htmlFor="patient-address">Address</label>
+              <input id="patient-address" className={fieldClass} value={form.address} onChange={e => update('address', e.target.value)} placeholder="B-14 Shanti Nagar Society, Ahmedabad" />
             </div>
           </div>
         </Card>

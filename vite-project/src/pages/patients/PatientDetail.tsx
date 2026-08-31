@@ -106,7 +106,7 @@ export default function PatientDetail() {
     )
   }
 
-  const age = differenceInYears(new Date(), parseISO(patient.date_of_birth))
+  const age = patient.date_of_birth ? differenceInYears(new Date(), parseISO(patient.date_of_birth)) : null
 
   const appointmentTypeLabels: Record<string, string> = {
     initial_assessment: 'Initial Assessment',
@@ -158,7 +158,10 @@ export default function PatientDetail() {
                 <h2 className="text-xl font-bold text-gray-900">{patient.full_name}</h2>
                 <div className="flex flex-wrap items-center gap-3 mt-1">
                   <span className="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{patient.mrn}</span>
-                  <span className="text-xs text-gray-500">{age} years &bull; {patient.gender} &bull; DOB: {format(parseISO(patient.date_of_birth), 'MMM d, yyyy')}</span>
+                  <span className="text-xs text-gray-500">
+                    {age !== null ? `${age} years • ` : ''}{patient.gender}
+                    {patient.date_of_birth ? ` • DOB: ${format(parseISO(patient.date_of_birth), 'MMM d, yyyy')}` : ''}
+                  </span>
                 </div>
               </div>
               <Badge variant={patient.is_active ? 'success' : 'default'} dot size="md">
@@ -167,10 +170,12 @@ export default function PatientDetail() {
             </div>
 
             <div className="flex flex-wrap gap-4 mt-3">
-              <div className="flex items-center gap-1.5 text-sm text-gray-600">
-                <Phone size={14} className="text-gray-400" />
-                {patient.phone}
-              </div>
+              {patient.phone && (
+                <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                  <Phone size={14} className="text-gray-400" />
+                  {patient.phone}
+                </div>
+              )}
               {patient.email && (
                 <div className="flex items-center gap-1.5 text-sm text-gray-600">
                   <Mail size={14} className="text-gray-400" />
@@ -242,11 +247,11 @@ export default function PatientDetail() {
             <dl className="space-y-3">
               {[
                 { label: 'Full Name', value: patient.full_name },
-                { label: 'Date of Birth', value: `${format(parseISO(patient.date_of_birth), 'MMMM d, yyyy')} (${age} yrs)` },
+                { label: 'Date of Birth', value: patient.date_of_birth ? `${format(parseISO(patient.date_of_birth), 'MMMM d, yyyy')} (${age} yrs)` : '—' },
                 { label: 'Gender', value: patient.gender },
-                { label: 'Phone', value: patient.phone },
+                { label: 'Mobile Number', value: patient.phone || '—' },
                 { label: 'Email', value: patient.email || '—' },
-                { label: 'Address', value: patient.address ? `${patient.address}, ${patient.city}, ${patient.state} ${patient.zip}` : '—' },
+                { label: 'Address', value: [patient.address, patient.city, patient.state, patient.zip].filter(Boolean).join(', ') || '—' },
               ].map(item => (
                 <div key={item.label} className="flex gap-3">
                   <dt className="text-xs font-medium text-gray-500 w-28 flex-shrink-0 pt-0.5">{item.label}</dt>
@@ -256,24 +261,29 @@ export default function PatientDetail() {
             </dl>
           </Card>
 
-          {/* Emergency Contact */}
           <Card>
-            <div className="flex items-center gap-2 mb-4">
-              <UserPlus size={16} className="text-[#3d9cd6]" />
-              <h3 className="text-sm font-semibold text-gray-900">Emergency Contact</h3>
-            </div>
-            <dl className="space-y-3">
-              <div className="flex gap-3">
-                <dt className="text-xs font-medium text-gray-500 w-28 flex-shrink-0 pt-0.5">Contact Name</dt>
-                <dd className="text-sm text-gray-900">{patient.emergency_contact_name || '—'}</dd>
-              </div>
-              <div className="flex gap-3">
-                <dt className="text-xs font-medium text-gray-500 w-28 flex-shrink-0 pt-0.5">Contact Phone</dt>
-                <dd className="text-sm text-gray-900">{patient.emergency_contact_phone || '—'}</dd>
-              </div>
-            </dl>
+            {/* Emergency contact fields were removed from the form — show only
+                where older records still carry them */}
+            {(patient.emergency_contact_name || patient.emergency_contact_phone) && (
+              <>
+                <div className="flex items-center gap-2 mb-4">
+                  <UserPlus size={16} className="text-[#3d9cd6]" />
+                  <h3 className="text-sm font-semibold text-gray-900">Emergency Contact</h3>
+                </div>
+                <dl className="space-y-3 mb-5">
+                  <div className="flex gap-3">
+                    <dt className="text-xs font-medium text-gray-500 w-28 flex-shrink-0 pt-0.5">Contact Name</dt>
+                    <dd className="text-sm text-gray-900">{patient.emergency_contact_name || '—'}</dd>
+                  </div>
+                  <div className="flex gap-3">
+                    <dt className="text-xs font-medium text-gray-500 w-28 flex-shrink-0 pt-0.5">Contact Phone</dt>
+                    <dd className="text-sm text-gray-900">{patient.emergency_contact_phone || '—'}</dd>
+                  </div>
+                </dl>
+              </>
+            )}
 
-            <div className="flex items-center gap-2 mt-5 mb-4">
+            <div className="flex items-center gap-2 mb-4">
               <Shield size={16} className="text-[#3d9cd6]" />
               <h3 className="text-sm font-semibold text-gray-900">Insurance</h3>
             </div>
