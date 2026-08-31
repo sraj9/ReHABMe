@@ -16,6 +16,7 @@ import { useAppointmentsContext } from '../context/AppointmentsContext'
 import { useNotesContext } from '../context/NotesContext'
 import { useInvoicesContext } from '../context/InvoicesContext'
 import { usePaymentsContext } from '../context/PaymentsContext'
+import { useSessionsContext } from '../context/SessionsContext'
 import { invoiceBalance, effectivePayments } from '../lib/ledger'
 import type { Invoice } from '../lib/types'
 
@@ -32,12 +33,19 @@ export default function Dashboard() {
   const { notes } = useNotesContext()
   const { invoices } = useInvoicesContext()
   const { payments } = usePaymentsContext()
+  const { sessions } = useSessionsContext()
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const userName = profile?.full_name || (user?.user_metadata?.full_name as string | undefined) || user?.email?.split('@')[0] || 'there'
 
   const todaysAppointments = appointments.filter(a => a.appointment_date === today)
+
+  // Sessions actually logged today (distinct from scheduled appointments)
+  const todayKey = new Date().toDateString()
+  const todaysSessions = sessions
+    .filter(s => new Date(s.session_at).toDateString() === todayKey)
+    .sort((a, b) => new Date(b.session_at).getTime() - new Date(a.session_at).getTime())
   const pendingInvoices = invoices.filter(i => i.status === 'sent' || i.status === 'overdue')
   // Money actually received (payments register), not invoice statuses
   const totalRevenue = effectivePayments(payments).reduce((sum, p) => sum + p.amount, 0)
@@ -200,6 +208,70 @@ export default function Dashboard() {
                     </Badge>
                   </div>
                 ))
+              )}
+            </div>
+          </Card>
+
+          {/* Sessions logged today */}
+          <Card padding="none" className="mt-6">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">Today's Sessions</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {todaysSessions.length} logged &bull; {format(new Date(), 'MMMM d, yyyy')}
+                </p>
+              </div>
+              <button
+                onClick={() => navigate('/sessions')}
+                className="text-sm text-[#3d9cd6] hover:underline font-medium"
+              >
+                View all
+              </button>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {todaysSessions.length === 0 ? (
+                <div className="px-5 py-10 text-center text-sm text-gray-500">
+                  No sessions logged yet today
+                </div>
+              ) : (
+                todaysSessions.slice(0, 6).map(s => (
+                  <div
+                    key={s.id}
+                    onClick={() => navigate(`/patients/${s.patient_id}`)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        if (e.key === ' ') e.preventDefault()
+                        navigate(`/patients/${s.patient_id}`)
+                      }
+                    }}
+                    className="px-5 py-3 hover:bg-gray-50 cursor-pointer transition-colors flex items-center gap-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3d9cd6] focus-visible:ring-inset"
+                  >
+                    <div className="flex-shrink-0 w-16 text-center">
+                      <p className="text-sm font-semibold text-gray-900">
+                        {format(parseISO(s.session_at), 'h:mm a')}
+                      </p>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{s.patient?.full_name}</p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {s.therapist?.full_name ?? 'Therapist not specified'}
+                      </p>
+                    </div>
+                    <Badge variant={s.package_id ? 'info' : 'warning'} size="sm">
+                      {s.package_id ? (s.package?.name ?? 'Package') : 'Walk-in'}
+                    </Badge>
+                  </div>
+                ))
+              )}
+              {todaysSessions.length > 6 && (
+                <button
+                  onClick={() => navigate('/sessions')}
+                  className="w-full px-5 py-2.5 text-xs font-medium text-[#3d9cd6] hover:bg-[#3d9cd6]/5"
+                >
+                  + {todaysSessions.length - 6} more today
+                </button>
               )}
             </div>
           </Card>

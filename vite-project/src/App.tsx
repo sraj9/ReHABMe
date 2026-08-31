@@ -24,6 +24,7 @@ import PatientList from './pages/patients/PatientList'
 import PatientDetail from './pages/patients/PatientDetail'
 import PatientForm from './pages/patients/PatientForm'
 import AppointmentList from './pages/appointments/AppointmentList'
+import SessionList from './pages/sessions/SessionList'
 import NotesList from './pages/notes/NotesList'
 import InvoiceList from './pages/billing/InvoiceList'
 import Accounts from './pages/accounts/Accounts'
@@ -79,6 +80,8 @@ function AppRoutes() {
         <Route path="patients/:id/edit" element={<PatientForm />} />
 
         {/* Appointments */}
+        <Route path="sessions" element={<SessionList />} />
+
         <Route path="appointments" element={<AppointmentList />} />
 
         {/* SOAP Notes */}

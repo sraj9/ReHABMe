@@ -2,6 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
   Users,
+  Play,
   CalendarDays,
   FileText,
   Receipt,
@@ -14,6 +15,7 @@ import { useAuth } from '../../hooks/useAuth'
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard', exact: true },
   { to: '/patients', icon: Users, label: 'Patients' },
+  { to: '/sessions', icon: Play, label: 'Sessions' },
   { to: '/appointments', icon: CalendarDays, label: 'Appointments' },
   { to: '/notes', icon: FileText, label: 'SOAP Notes' },
   { to: '/billing', icon: Receipt, label: 'Billing' },
