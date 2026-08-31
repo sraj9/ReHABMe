@@ -90,7 +90,9 @@ create or replace function generate_mrn()
 returns trigger language plpgsql as $$
 begin
   if new.mrn is null or new.mrn = '' then
-    new.mrn := 'MRN-' || to_char(now(), 'YYYY') || '-' || lpad(nextval('mrn_seq')::text, 3, '0');
+    -- No fixed-width padding: lpad truncates values past its length, which
+    -- produced duplicate MRNs once the sequence crossed 999
+    new.mrn := 'MRN-' || to_char(now(), 'YYYY') || '-' || nextval('mrn_seq')::text;
   end if;
   return new;
 end;
