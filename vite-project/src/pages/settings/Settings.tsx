@@ -18,7 +18,7 @@ import { useClinicSettings } from '../../hooks/useClinicSettings'
 import { staffAdmin } from '../../lib/staffAdmin'
 import { normalizePhone } from '../../lib/phone'
 import { isSupabaseConfigured } from '../../lib/supabase'
-import type { AttendanceRequest, StaffProfile, UserRole } from '../../lib/types'
+import type { Attendance, AttendanceRequest, StaffProfile, UserRole } from '../../lib/types'
 
 type SettingsTab = 'staff' | 'attendance' | 'clinic' | 'whatsapp' | 'security'
 
@@ -621,11 +621,23 @@ function AttendanceTab() {
 
   const filtered = attendance.filter(a => !dateFilter || a.check_in_at.startsWith(dateFilter))
 
-  const duration = (a: { check_in_at: string; check_out_at?: string }): string => {
-    if (!a.check_out_at) return 'On duty'
-    const mins = differenceInMinutes(parseISO(a.check_out_at), parseISO(a.check_in_at))
-    return `${Math.floor(mins / 60)}h ${mins % 60}m`
-  }
+  /** Minutes worked in one entry; an open (not-yet-checked-out) entry counts 0. */
+  const entryMinutes = (a: Attendance): number =>
+    a.check_out_at ? Math.max(0, differenceInMinutes(parseISO(a.check_out_at), parseISO(a.check_in_at))) : 0
+
+  const hm = (mins: number): string => `${Math.floor(mins / 60)}h ${mins % 60}m`
+
+  // A single stretch longer than this is almost certainly a missed punch-out
+  const SUSPECT_MINUTES = 16 * 60
+
+  // Group by calendar day (newest first), then by staff member within the day
+  const days = Object.entries(
+    filtered.reduce<Record<string, Attendance[]>>((acc, a) => {
+      const key = format(parseISO(a.check_in_at), 'yyyy-MM-dd')
+      ;(acc[key] ||= []).push(a)
+      return acc
+    }, {})
+  ).sort(([a], [b]) => b.localeCompare(a))
 
   return (
     <div className="space-y-5">
@@ -634,7 +646,7 @@ function AttendanceTab() {
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h3 className="text-sm font-semibold text-gray-900">Staff Attendance</h3>
-          <p className="text-xs text-gray-500 mt-0.5">GPS check-ins recorded from the header button</p>
+          <p className="text-xs text-gray-500 mt-0.5">Daily totals across all punches — GPS check-ins plus approved regularizations</p>
         </div>
         <div className="flex items-center gap-2">
           <label htmlFor="attendance-date" className="text-xs font-medium text-gray-500">Date</label>
@@ -644,55 +656,111 @@ function AttendanceTab() {
           )}
         </div>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-100">
-              {['Staff', 'Date', 'Check In', 'Check Out', 'Duration', 'Location'].map(h => (
-                <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-5 py-12 text-center text-sm text-gray-500">
-                  {loading ? 'Loading attendance…' : 'No attendance records yet — staff check in from the button in the header'}
-                </td>
-              </tr>
-            ) : (
-              filtered.map(a => (
-                <tr key={a.id}>
-                  <td className="px-5 py-3.5 text-sm font-medium text-gray-900">{a.profile?.full_name ?? '—'}</td>
-                  <td className="px-5 py-3.5 text-sm text-gray-600">{format(parseISO(a.check_in_at), 'MMM d, yyyy')}</td>
-                  <td className="px-5 py-3.5 text-sm text-gray-600">{format(parseISO(a.check_in_at), 'h:mm a')}</td>
-                  <td className="px-5 py-3.5 text-sm text-gray-600">{a.check_out_at ? format(parseISO(a.check_out_at), 'h:mm a') : '—'}</td>
-                  <td className="px-5 py-3.5">
-                    <Badge variant={a.check_out_at ? 'default' : 'success'} dot={!a.check_out_at}>{duration(a)}</Badge>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    {/* Regularized entries were approved by an admin, so they carry no GPS fix */}
-                    {a.lat != null && a.lng != null ? (
-                      <a
-                        href={`https://maps.google.com/?q=${a.lat},${a.lng}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-[#3d9cd6] hover:underline"
-                      >
-                        <MapPin size={11} />
-                        Map
-                        <ExternalLink size={10} />
-                      </a>
-                    ) : (
-                      <Badge variant="info" size="sm">Regularized</Badge>
+
+      {days.length === 0 ? (
+        <div className="px-5 py-12 text-center text-sm text-gray-500">
+          {loading ? 'Loading attendance…' : 'No attendance records yet — staff check in from the button in the header'}
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {days.map(([day, dayEntries]) => {
+            const dayTotal = dayEntries.reduce((sum, a) => sum + entryMinutes(a), 0)
+            const onDuty = dayEntries.filter(a => !a.check_out_at).length
+            // One block per staff member, so their punches and total sit together
+            const staffGroups = Object.entries(
+              dayEntries.reduce<Record<string, Attendance[]>>((acc, a) => {
+                ;(acc[a.profile?.full_name ?? 'Unknown'] ||= []).push(a)
+                return acc
+              }, {})
+            ).sort(([a], [b]) => a.localeCompare(b))
+
+            return (
+              <div key={day}>
+                {/* Day header — total hours for everyone that day */}
+                <div className="px-5 py-2.5 bg-gray-50/80 flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold text-gray-700">
+                    {format(parseISO(`${day}T00:00:00`), 'EEEE, MMM d, yyyy')}
+                    <span className="font-normal text-gray-400"> · {staffGroups.length} staff</span>
+                  </p>
+                  <div className="flex items-center gap-2">
+                    {onDuty > 0 && (
+                      <span className="text-xs text-green-600">{onDuty} still on duty</span>
                     )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+                    <Badge variant="primary" size="sm">Day total {hm(dayTotal)}</Badge>
+                  </div>
+                </div>
+
+                {staffGroups.map(([name, entries]) => {
+                  const staffTotal = entries.reduce((sum, a) => sum + entryMinutes(a), 0)
+                  const suspect = entries.some(a => entryMinutes(a) > SUSPECT_MINUTES)
+                  return (
+                    <div key={`${day}-${name}`} className="px-5 py-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                      <div className="sm:w-40 flex-shrink-0">
+                        <p className="text-sm font-medium text-gray-900">{name}</p>
+                        <p className="text-xs text-gray-500">
+                          {entries.length} punch{entries.length === 1 ? '' : 'es'}
+                        </p>
+                      </div>
+
+                      {/* Each punch pair for this person on this day */}
+                      <div className="flex-1 flex flex-wrap gap-2">
+                        {entries
+                          .slice()
+                          .sort((a, b) => a.check_in_at.localeCompare(b.check_in_at))
+                          .map(a => (
+                            <div
+                              key={a.id}
+                              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs ${
+                                !a.check_out_at
+                                  ? 'border-green-200 bg-green-50'
+                                  : entryMinutes(a) > SUSPECT_MINUTES
+                                    ? 'border-amber-200 bg-amber-50'
+                                    : 'border-gray-200 bg-white'
+                              }`}
+                            >
+                              <span className="text-gray-700">
+                                {format(parseISO(a.check_in_at), 'h:mm a')}
+                                {' – '}
+                                {a.check_out_at ? format(parseISO(a.check_out_at), 'h:mm a') : 'on duty'}
+                              </span>
+                              {a.check_out_at && (
+                                <span className="font-medium text-gray-500">{hm(entryMinutes(a))}</span>
+                              )}
+                              {a.lat != null && a.lng != null ? (
+                                <a
+                                  href={`https://maps.google.com/?q=${a.lat},${a.lng}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title="Check-in location"
+                                  className="text-[#3d9cd6] hover:underline inline-flex items-center gap-0.5"
+                                >
+                                  <MapPin size={10} />
+                                  <ExternalLink size={9} />
+                                </a>
+                              ) : (
+                                <span className="text-[10px] uppercase tracking-wide text-[#3d9cd6]" title="Added by an approved regularization request">reg</span>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+
+                      {/* This staff member's total for the day */}
+                      <div className="sm:w-28 flex-shrink-0 sm:text-right">
+                        <p className="text-sm font-semibold text-gray-900">{hm(staffTotal)}</p>
+                        {suspect && (
+                          <p className="text-xs text-amber-600" title="A punch longer than 16 hours — likely a missed punch out">
+                            check punches
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </Card>
     </div>
   )
