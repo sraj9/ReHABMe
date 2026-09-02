@@ -9,6 +9,7 @@ import { NotesProvider } from './context/NotesContext'
 import { InvoicesProvider } from './context/InvoicesContext'
 import { AttendanceProvider } from './context/AttendanceContext'
 import { AttendanceRequestsProvider } from './context/AttendanceRequestsContext'
+import { HolidaysProvider } from './context/HolidaysContext'
 import { PaymentsProvider } from './context/PaymentsContext'
 import { ExpensesProvider } from './context/ExpensesContext'
 import { PackagesProvider } from './context/PackagesContext'
@@ -125,6 +126,7 @@ export default function App() {
                 <InvoicesProvider>
                   <AttendanceProvider>
                   <AttendanceRequestsProvider>
+                  <HolidaysProvider>
                     <PaymentsProvider>
                       <ExpensesProvider>
                         <PackagesProvider>
@@ -134,6 +136,7 @@ export default function App() {
                         </PackagesProvider>
                       </ExpensesProvider>
                     </PaymentsProvider>
+                  </HolidaysProvider>
                   </AttendanceRequestsProvider>
                   </AttendanceProvider>
                 </InvoicesProvider>

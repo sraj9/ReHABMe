@@ -15,8 +15,20 @@ export interface StaffProfile {
   avatar_url?: string
   is_active: boolean
   must_change_password?: boolean
+  /** Payroll: monthly salary and the hours a full day is expected to be */
+  monthly_salary?: number | null
+  daily_working_hours?: number | null
   created_at: string
   updated_at: string
+}
+
+/** Clinic holiday — the clinic is closed, so it doesn't count as a working day. */
+export interface Holiday {
+  id: string
+  holiday_date: string
+  name: string
+  is_national: boolean
+  created_at: string
 }
 
 export interface Attendance {

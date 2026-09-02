@@ -143,6 +143,9 @@ Deno.serve(async req => {
     const email = String(body.email ?? '').trim() || null
     const role = body.role === 'admin' ? 'admin' : 'therapist'
     const specialty = String(body.specialty ?? '').trim() || null
+    // Payroll fields, used to work the monthly payout out from attendance
+    const monthlySalary = typeof body.monthly_salary === 'number' ? body.monthly_salary : null
+    const dailyWorkingHours = typeof body.daily_working_hours === 'number' ? body.daily_working_hours : 8
 
     if (!fullName) return json(400, { error: 'Full name is required' })
     if (!phone) {
@@ -177,6 +180,8 @@ Deno.serve(async req => {
         phone,
         role,
         specialty,
+        monthly_salary: monthlySalary,
+        daily_working_hours: dailyWorkingHours,
         must_change_password: !customPassword,
       })
       .select('*')

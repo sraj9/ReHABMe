@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { format, parseISO, differenceInMinutes } from 'date-fns'
 import {
   Users, Plus, Shield, Building2, CheckCircle, Edit, Trash2, KeyRound,
-  MessageCircle, MapPin, Send, ExternalLink,
+  MessageCircle, MapPin, Send, ExternalLink, Wallet, CalendarOff,
 } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import Badge from '../../components/ui/Badge'
@@ -12,15 +12,18 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import { useStaffContext } from '../../context/StaffContext'
 import { useAttendanceContext } from '../../context/AttendanceContext'
 import { useAttendanceRequestsContext } from '../../context/AttendanceRequestsContext'
+import { useHolidaysContext } from '../../context/HolidaysContext'
+import { payoutFor } from '../../lib/payroll'
+import { formatCurrency } from '../../lib/format'
 import { useToast } from '../../context/ToastContext'
 import { useAuth } from '../../hooks/useAuth'
 import { useClinicSettings } from '../../hooks/useClinicSettings'
 import { staffAdmin } from '../../lib/staffAdmin'
 import { normalizePhone } from '../../lib/phone'
 import { isSupabaseConfigured } from '../../lib/supabase'
-import type { Attendance, AttendanceRequest, StaffProfile, UserRole } from '../../lib/types'
+import type { Attendance, AttendanceRequest, Holiday, StaffProfile, UserRole } from '../../lib/types'
 
-type SettingsTab = 'staff' | 'attendance' | 'clinic' | 'whatsapp' | 'security'
+type SettingsTab = 'staff' | 'attendance' | 'payroll' | 'clinic' | 'whatsapp' | 'security'
 
 const fieldClass =
   'w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#3d9cd6] focus:border-transparent'
@@ -32,12 +35,13 @@ export default function Settings() {
   const [searchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
     const t = searchParams.get('tab')
-    return (t === 'attendance' || t === 'clinic' || t === 'whatsapp' || t === 'security' ? t : 'staff') as SettingsTab
+    return (t === 'attendance' || t === 'payroll' || t === 'clinic' || t === 'whatsapp' || t === 'security' ? t : 'staff') as SettingsTab
   })
 
   const tabs: { key: SettingsTab; label: string; icon: typeof Users; adminOnly?: boolean }[] = [
     { key: 'staff', label: 'Staff Management', icon: Users },
     { key: 'attendance', label: 'Attendance', icon: MapPin, adminOnly: true },
+    { key: 'payroll', label: 'Payroll', icon: Wallet, adminOnly: true },
     { key: 'clinic', label: 'Clinic Settings', icon: Building2, adminOnly: true },
     { key: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, adminOnly: true },
     { key: 'security', label: 'Security', icon: Shield },
@@ -61,6 +65,7 @@ export default function Settings() {
 
       {activeTab === 'staff' && <StaffTab isAdmin={isAdmin} />}
       {activeTab === 'attendance' && isAdmin && <AttendanceTab />}
+      {activeTab === 'payroll' && isAdmin && <PayrollTab />}
       {activeTab === 'clinic' && isAdmin && <ClinicTab />}
       {activeTab === 'whatsapp' && isAdmin && <WhatsAppTab />}
       {activeTab === 'security' && <SecurityTab />}
@@ -239,7 +244,7 @@ interface InviteStaffModalProps {
 
 function InviteStaffModal({ onClose, addStaffLocally, refresh }: InviteStaffModalProps) {
   const toast = useToast()
-  const [form, setForm] = useState({ full_name: '', phone: '', email: '', role: 'therapist' as UserRole, specialty: '', password: '' })
+  const [form, setForm] = useState({ full_name: '', phone: '', email: '', role: 'therapist' as UserRole, specialty: '', password: '', monthly_salary: '', daily_working_hours: '8' })
   const [sendWhatsApp, setSendWhatsApp] = useState(true)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [sending, setSending] = useState(false)
@@ -270,6 +275,8 @@ function InviteStaffModal({ onClose, addStaffLocally, refresh }: InviteStaffModa
         email: form.email.trim() || undefined,
         role: form.role,
         specialty: form.specialty.trim() || undefined,
+        monthly_salary: form.monthly_salary ? Number(form.monthly_salary) : null,
+        daily_working_hours: Number(form.daily_working_hours) || 8,
         is_active: true,
         created_at: now,
         updated_at: now,
@@ -287,6 +294,8 @@ function InviteStaffModal({ onClose, addStaffLocally, refresh }: InviteStaffModa
       email: form.email.trim() || null,
       role: form.role,
       specialty: form.specialty.trim() || null,
+      monthly_salary: form.monthly_salary ? Number(form.monthly_salary) : null,
+      daily_working_hours: Number(form.daily_working_hours) || 8,
       password: form.password || null,
       send_whatsapp: sendWhatsApp,
     })
@@ -356,6 +365,15 @@ function InviteStaffModal({ onClose, addStaffLocally, refresh }: InviteStaffModa
             <div>
               <label htmlFor="invite-specialty" className={labelClass}>Specialty</label>
               <input id="invite-specialty" className={fieldClass} value={form.specialty} onChange={e => setForm(f => ({ ...f, specialty: e.target.value }))} placeholder="Physiotherapy" />
+            </div>
+            <div>
+              <label htmlFor="invite-salary" className={labelClass}>Monthly Salary (₹)</label>
+              <input id="invite-salary" type="number" min="0" step="1" className={fieldClass} value={form.monthly_salary} onChange={e => setForm(f => ({ ...f, monthly_salary: e.target.value }))} placeholder="e.g. 25000" />
+            </div>
+            <div>
+              <label htmlFor="invite-hours" className={labelClass}>Working Hours / Day</label>
+              <input id="invite-hours" type="number" min="1" max="16" step="0.5" className={fieldClass} value={form.daily_working_hours} onChange={e => setForm(f => ({ ...f, daily_working_hours: e.target.value }))} />
+              <p className="text-xs text-gray-400 mt-1">Used to work out the monthly payout from attendance</p>
             </div>
           </div>
           <div>
@@ -511,6 +529,8 @@ function EditStaffModal({ member, onClose, updateStaff, onToggleActive }: EditSt
     phone: member.phone ?? '',
     email: member.email ?? '',
     specialty: member.specialty ?? '',
+    monthly_salary: member.monthly_salary != null ? String(member.monthly_salary) : '',
+    daily_working_hours: member.daily_working_hours != null ? String(member.daily_working_hours) : '8',
     role: member.role,
   })
   const [error, setError] = useState('')
@@ -595,6 +615,14 @@ function EditStaffModal({ member, onClose, updateStaff, onToggleActive }: EditSt
               <label htmlFor="edit-staff-specialty" className={labelClass}>Specialty</label>
               <input id="edit-staff-specialty" className={fieldClass} value={form.specialty} onChange={e => setForm(f => ({ ...f, specialty: e.target.value }))} />
             </div>
+            <div>
+              <label htmlFor="edit-staff-salary" className={labelClass}>Monthly Salary (₹)</label>
+              <input id="edit-staff-salary" type="number" min="0" step="1" className={fieldClass} value={form.monthly_salary} onChange={e => setForm(f => ({ ...f, monthly_salary: e.target.value }))} placeholder="e.g. 25000" />
+            </div>
+            <div>
+              <label htmlFor="edit-staff-hours" className={labelClass}>Working Hours / Day</label>
+              <input id="edit-staff-hours" type="number" min="1" max="16" step="0.5" className={fieldClass} value={form.daily_working_hours} onChange={e => setForm(f => ({ ...f, daily_working_hours: e.target.value }))} />
+            </div>
           </div>
           <button
             onClick={() => { void onToggleActive(member); onClose() }}
@@ -609,6 +637,214 @@ function EditStaffModal({ member, onClose, updateStaff, onToggleActive }: EditSt
         </div>
       </div>
     </div>
+  )
+}
+
+// ============================================================
+// PAYROLL (admin)
+// Payout is the salary scaled by hours actually worked against the hours
+// expected for the month. Expected days exclude Sundays and holidays.
+// ============================================================
+function PayrollTab() {
+  const { staff } = useStaffContext()
+  const { attendance } = useAttendanceContext()
+  const { holidays } = useHolidaysContext()
+  const [month, setMonth] = useState(() => format(new Date(), 'yyyy-MM'))
+
+  const monthDate = parseISO(`${month}-01T00:00:00`)
+  const active = staff.filter(m => m.is_active)
+  const rows = active.map(m => ({ member: m, calc: payoutFor(m, monthDate, attendance, holidays) }))
+  const totalPayout = rows.reduce((sum, r) => sum + (r.calc.payout ?? 0), 0)
+  const missingSalary = rows.filter(r => r.calc.payout === null).length
+  const monthHolidays = holidays.filter(h => h.holiday_date.startsWith(month))
+  const workingDays = rows[0]?.calc.workingDays ?? 0
+
+  return (
+    <div className="space-y-5">
+      <Card padding="none">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Monthly Payout</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {workingDays} working days · {monthHolidays.length} holiday{monthHolidays.length === 1 ? '' : 's'} · Sundays off
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <label htmlFor="payroll-month" className="text-xs font-medium text-gray-500">Month</label>
+            <input id="payroll-month" type="month" value={month} onChange={e => setMonth(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3d9cd6]" />
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-100">
+                {['Staff', 'Salary', 'Hours/Day', 'Expected', 'Worked', 'Attendance', 'Payout'].map(h => (
+                  <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {rows.length === 0 ? (
+                <tr><td colSpan={7} className="px-5 py-10 text-center text-sm text-gray-500">No active staff</td></tr>
+              ) : rows.map(({ member, calc }) => {
+                const pct = Math.round(calc.ratio * 100)
+                return (
+                  <tr key={member.id}>
+                    <td className="px-5 py-3.5">
+                      <p className="text-sm font-medium text-gray-900">{member.full_name}</p>
+                      <p className="text-xs text-gray-500">{calc.daysPresent} days present</p>
+                    </td>
+                    <td className="px-5 py-3.5 text-sm text-gray-600">
+                      {member.monthly_salary != null ? formatCurrency(Number(member.monthly_salary)) : <span className="text-amber-600 text-xs">not set</span>}
+                    </td>
+                    <td className="px-5 py-3.5 text-sm text-gray-600">{Number(member.daily_working_hours ?? 8)}h</td>
+                    <td className="px-5 py-3.5 text-sm text-gray-600">{calc.expectedHours}h</td>
+                    <td className="px-5 py-3.5 text-sm font-medium text-gray-900">{calc.actualHours}h</td>
+                    <td className="px-5 py-3.5">
+                      <Badge variant={pct >= 95 ? 'success' : pct >= 75 ? 'warning' : 'danger'} size="sm">{pct}%</Badge>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      {calc.payout != null
+                        ? <span className="text-sm font-semibold text-gray-900">{formatCurrency(calc.payout)}</span>
+                        : <span className="text-xs text-gray-400">—</span>}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+            {rows.length > 0 && (
+              <tfoot>
+                <tr className="bg-gray-50/70 border-t border-gray-100">
+                  <td colSpan={6} className="px-5 py-3 text-xs font-semibold text-gray-600">
+                    Total payout for {format(monthDate, 'MMMM yyyy')}
+                    {missingSalary > 0 && <span className="font-normal text-amber-600"> · {missingSalary} without a salary set</span>}
+                  </td>
+                  <td className="px-5 py-3 text-sm font-bold text-gray-900">{formatCurrency(totalPayout)}</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+        <p className="px-5 py-3 text-xs text-gray-400 border-t border-gray-100">
+          Payout = salary x (hours worked / hours expected). Over 100% means overtime — adjust manually when paying.
+        </p>
+      </Card>
+
+      <HolidayManager month={month} />
+    </div>
+  )
+}
+
+// ============================================================
+// HOLIDAY CALENDAR (admin)
+// Only India's fixed national days are seeded; festival and regional
+// dates move every year, so the admin adds those.
+// ============================================================
+function HolidayManager({ month }: { month: string }) {
+  const { holidays, addHoliday, deleteHoliday } = useHolidaysContext()
+  const toast = useToast()
+  const [date, setDate] = useState('')
+  const [name, setName] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [removeTarget, setRemoveTarget] = useState<Holiday | null>(null)
+
+  const year = month.slice(0, 4)
+  const yearHolidays = holidays.filter(h => h.holiday_date.startsWith(year))
+
+  const add = async () => {
+    if (!date || !name.trim()) {
+      toast.error('Pick a date and name the holiday')
+      return
+    }
+    setSaving(true)
+    const created = await addHoliday({
+      id: crypto.randomUUID(),
+      holiday_date: date,
+      name: name.trim(),
+      is_national: false,
+      created_at: new Date().toISOString(),
+    })
+    setSaving(false)
+    if (!created) {
+      toast.error('Could not add it — that date may already be a holiday')
+      return
+    }
+    toast.success(`${name.trim()} added — it no longer counts as a working day`)
+    setDate('')
+    setName('')
+  }
+
+  return (
+    <Card padding="none">
+      <div className="px-5 py-4 border-b border-gray-100">
+        <div className="flex items-center gap-2">
+          <CalendarOff size={15} className="text-[#3d9cd6]" />
+          <h3 className="text-sm font-semibold text-gray-900">Holiday Calendar {year}</h3>
+        </div>
+        <p className="text-xs text-gray-500 mt-1">
+          Republic Day, Independence Day and Gandhi Jayanti are already in — add Diwali, Holi, Eid and any
+          regional or clinic closures, since those dates move each year. Holidays are excluded from expected working days.
+        </p>
+      </div>
+
+      <div className="px-5 py-4 border-b border-gray-100 flex flex-col sm:flex-row gap-2">
+        <input
+          type="date"
+          aria-label="Holiday date"
+          value={date}
+          onChange={e => setDate(e.target.value)}
+          className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3d9cd6]"
+        />
+        <input
+          aria-label="Holiday name"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder="e.g. Diwali"
+          className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3d9cd6]"
+        />
+        <Button loading={saving} icon={<Plus size={14} />} onClick={add}>Add Holiday</Button>
+      </div>
+
+      {yearHolidays.length === 0 ? (
+        <div className="px-5 py-8 text-center text-sm text-gray-500">No holidays recorded for {year}</div>
+      ) : (
+        <div className="divide-y divide-gray-50">
+          {yearHolidays.map(h => (
+            <div key={h.id} className="px-5 py-3 flex items-center gap-3">
+              <div className="w-24 flex-shrink-0">
+                <p className="text-sm font-medium text-gray-900">{format(parseISO(h.holiday_date), 'MMM d')}</p>
+                <p className="text-xs text-gray-500">{format(parseISO(h.holiday_date), 'EEE')}</p>
+              </div>
+              <p className="flex-1 text-sm text-gray-700">{h.name}</p>
+              {h.is_national && <Badge variant="info" size="sm">National</Badge>}
+              <button
+                onClick={() => setRemoveTarget(h)}
+                aria-label={`Remove ${h.name}`}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={!!removeTarget}
+        title="Remove this holiday?"
+        message={removeTarget ? `${removeTarget.name} on ${format(parseISO(removeTarget.holiday_date), 'MMM d, yyyy')} will count as a working day again.` : ''}
+        confirmLabel="Remove"
+        onConfirm={() => {
+          if (removeTarget) void deleteHoliday(removeTarget.id).then(ok => {
+            if (ok) toast.success('Holiday removed')
+            else toast.error('Could not remove the holiday')
+          })
+          setRemoveTarget(null)
+        }}
+        onCancel={() => setRemoveTarget(null)}
+      />
+    </Card>
   )
 }
 
