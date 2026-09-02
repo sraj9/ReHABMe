@@ -566,6 +566,8 @@ function EditStaffModal({ member, onClose, updateStaff, onToggleActive }: EditSt
       email: form.email.trim() || undefined,
       specialty: form.specialty.trim() || undefined,
       role: form.role,
+      monthly_salary: form.monthly_salary.trim() ? Number(form.monthly_salary) : null,
+      daily_working_hours: Number(form.daily_working_hours) || 8,
       updated_at: new Date().toISOString(),
     })
     setSaving(false)
