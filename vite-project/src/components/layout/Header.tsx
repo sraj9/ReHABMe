@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { format } from 'date-fns'
-import { Bell, ChevronDown, LogOut, User, Settings, Menu, CalendarDays, Receipt, MapPin } from 'lucide-react'
+import { format, parseISO } from 'date-fns'
+import { Bell, ChevronDown, LogOut, User, Settings, Menu, CalendarDays, Receipt, MapPin, ClockAlert } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useAppointmentsContext } from '../../context/AppointmentsContext'
 import { useInvoicesContext } from '../../context/InvoicesContext'
 import { useAttendanceContext } from '../../context/AttendanceContext'
+import { useAttendanceRequestsContext } from '../../context/AttendanceRequestsContext'
+import RegularizeAttendanceModal from '../RegularizeAttendanceModal'
 import { useToast } from '../../context/ToastContext'
 import { formatCurrency } from '../../lib/format'
 
@@ -38,7 +40,7 @@ interface HeaderProps {
 
 interface Notification {
   id: string
-  icon: 'appointment' | 'invoice'
+  icon: 'appointment' | 'invoice' | 'attendance'
   title: string
   detail: string
   to: string
@@ -56,6 +58,8 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
   const { appointments } = useAppointmentsContext()
   const { invoices } = useInvoicesContext()
   const { attendance, addAttendance, updateAttendance } = useAttendanceContext()
+  const { requests } = useAttendanceRequestsContext()
+  const [showRegularize, setShowRegularize] = useState(false)
 
   // A session without a check-out means this person is currently checked in
   const openSession = profile
@@ -137,6 +141,18 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
         detail: `${i.patient?.full_name ?? 'Patient'} · ${formatCurrency(i.total_amount)}`,
         to: '/billing',
       })),
+    // Admins review attendance regularization requests from here
+    ...(profile?.role === 'admin'
+      ? requests
+          .filter(r => r.status === 'pending')
+          .map(r => ({
+            id: `att-${r.id}`,
+            icon: 'attendance' as const,
+            title: `Attendance request — ${r.profile?.full_name ?? 'Staff'}`,
+            detail: `${format(parseISO(r.request_date), 'MMM d')} · ${r.type === 'both' ? 'punch in & out' : r.type === 'check_in' ? 'punch in' : 'punch out'}`,
+            to: '/settings?tab=attendance',
+          }))
+      : []),
   ]
 
   const pageTitle = getPageTitle(location.pathname)
@@ -175,6 +191,16 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
           {locating ? 'Getting location…' : openSession ? 'Check Out' : 'Check In'}
         </button>
         )}
+        {profile?.role !== 'admin' && (
+          <button
+            onClick={() => setShowRegularize(true)}
+            className="p-2 rounded-lg text-gray-400 hover:text-[#3d9cd6] hover:bg-[#3d9cd6]/10 transition-colors"
+            title="Missed a punch in/out? Request regularization"
+            aria-label="Request attendance regularization"
+          >
+            <ClockAlert size={17} />
+          </button>
+        )}
 
         {/* Notifications */}
         <div className="relative">
@@ -209,8 +235,14 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
                         onClick={() => { setBellOpen(false); navigate(n.to) }}
                         className="w-full flex items-start gap-2.5 px-3 py-2.5 text-left hover:bg-gray-50"
                       >
-                        <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${n.icon === 'appointment' ? 'bg-blue-100 text-blue-600' : 'bg-red-100 text-red-600'}`}>
-                          {n.icon === 'appointment' ? <CalendarDays size={13} /> : <Receipt size={13} />}
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                          n.icon === 'appointment' ? 'bg-blue-100 text-blue-600'
+                            : n.icon === 'attendance' ? 'bg-amber-100 text-amber-600'
+                            : 'bg-red-100 text-red-600'
+                        }`}>
+                          {n.icon === 'appointment' ? <CalendarDays size={13} />
+                            : n.icon === 'attendance' ? <ClockAlert size={13} />
+                            : <Receipt size={13} />}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-gray-900 truncate">{n.title}</p>
@@ -277,6 +309,7 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
           )}
         </div>
       </div>
+      {showRegularize && <RegularizeAttendanceModal onClose={() => setShowRegularize(false)} />}
     </header>
   )
 }

@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { format, parseISO, differenceInMinutes } from 'date-fns'
 import {
   Users, Plus, Shield, Building2, CheckCircle, Edit, Trash2, KeyRound,
@@ -10,13 +11,14 @@ import Button from '../../components/ui/Button'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import { useStaffContext } from '../../context/StaffContext'
 import { useAttendanceContext } from '../../context/AttendanceContext'
+import { useAttendanceRequestsContext } from '../../context/AttendanceRequestsContext'
 import { useToast } from '../../context/ToastContext'
 import { useAuth } from '../../hooks/useAuth'
 import { useClinicSettings } from '../../hooks/useClinicSettings'
 import { staffAdmin } from '../../lib/staffAdmin'
 import { normalizePhone } from '../../lib/phone'
 import { isSupabaseConfigured } from '../../lib/supabase'
-import type { StaffProfile, UserRole } from '../../lib/types'
+import type { AttendanceRequest, StaffProfile, UserRole } from '../../lib/types'
 
 type SettingsTab = 'staff' | 'attendance' | 'clinic' | 'whatsapp' | 'security'
 
@@ -27,7 +29,11 @@ const labelClass = 'block text-xs font-medium text-gray-700 mb-1'
 export default function Settings() {
   const { profile } = useAuth()
   const isAdmin = profile?.role === 'admin'
-  const [activeTab, setActiveTab] = useState<SettingsTab>('staff')
+  const [searchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
+    const t = searchParams.get('tab')
+    return (t === 'attendance' || t === 'clinic' || t === 'whatsapp' || t === 'security' ? t : 'staff') as SettingsTab
+  })
 
   const tabs: { key: SettingsTab; label: string; icon: typeof Users; adminOnly?: boolean }[] = [
     { key: 'staff', label: 'Staff Management', icon: Users },
@@ -622,6 +628,8 @@ function AttendanceTab() {
   }
 
   return (
+    <div className="space-y-5">
+    <RegularizationQueue />
     <Card padding="none">
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
         <div>
@@ -663,16 +671,21 @@ function AttendanceTab() {
                     <Badge variant={a.check_out_at ? 'default' : 'success'} dot={!a.check_out_at}>{duration(a)}</Badge>
                   </td>
                   <td className="px-5 py-3.5">
-                    <a
-                      href={`https://maps.google.com/?q=${a.lat},${a.lng}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-xs text-[#3d9cd6] hover:underline"
-                    >
-                      <MapPin size={11} />
-                      Map
-                      <ExternalLink size={10} />
-                    </a>
+                    {/* Regularized entries were approved by an admin, so they carry no GPS fix */}
+                    {a.lat != null && a.lng != null ? (
+                      <a
+                        href={`https://maps.google.com/?q=${a.lat},${a.lng}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-[#3d9cd6] hover:underline"
+                      >
+                        <MapPin size={11} />
+                        Map
+                        <ExternalLink size={10} />
+                      </a>
+                    ) : (
+                      <Badge variant="info" size="sm">Regularized</Badge>
+                    )}
                   </td>
                 </tr>
               ))
@@ -680,6 +693,133 @@ function AttendanceTab() {
           </tbody>
         </table>
       </div>
+    </Card>
+    </div>
+  )
+}
+
+// ============================================================
+// ATTENDANCE REGULARIZATION QUEUE (admin)
+// Staff raise requests for missed punches; approving one writes the
+// attendance record via a database trigger.
+// ============================================================
+function RegularizationQueue() {
+  const { requests, updateRequest } = useAttendanceRequestsContext()
+  const { profile } = useAuth()
+  const toast = useToast()
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
+
+  const pending = requests.filter(r => r.status === 'pending')
+  const reviewed = requests.filter(r => r.status !== 'pending').slice(0, 10)
+
+  const describe = (r: AttendanceRequest) => {
+    const times: string[] = []
+    if (r.requested_check_in_at) times.push(`in ${format(parseISO(r.requested_check_in_at), 'h:mm a')}`)
+    if (r.requested_check_out_at) times.push(`out ${format(parseISO(r.requested_check_out_at), 'h:mm a')}`)
+    return times.join(' · ')
+  }
+
+  const decide = async (r: AttendanceRequest, status: 'approved' | 'rejected') => {
+    setBusyId(r.id)
+    const saved = await updateRequest({
+      ...r,
+      status,
+      reviewed_by: profile?.id ?? null,
+      reviewed_at: new Date().toISOString(),
+    })
+    setBusyId(null)
+    if (!saved) {
+      toast.error(`Could not ${status === 'approved' ? 'approve' : 'reject'} the request`)
+      return
+    }
+    toast.success(
+      status === 'approved'
+        ? `Approved — ${r.profile?.full_name ?? 'staff'}'s attendance updated`
+        : `Request from ${r.profile?.full_name ?? 'staff'} rejected`
+    )
+  }
+
+  return (
+    <Card padding="none">
+      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">Regularization Requests</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {pending.length > 0
+              ? `${pending.length} awaiting your review`
+              : 'Staff requests for missed punch in/out appear here'}
+          </p>
+        </div>
+        {pending.length > 0 && <Badge variant="warning" dot>{pending.length} pending</Badge>}
+      </div>
+
+      {pending.length === 0 ? (
+        <div className="px-5 py-8 text-center text-sm text-gray-500">No pending requests</div>
+      ) : (
+        <div className="divide-y divide-gray-50">
+          {pending.map(r => (
+            <div key={r.id} className="px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900">
+                  {r.profile?.full_name ?? 'Staff'}
+                  <span className="text-gray-400 font-normal"> · {format(parseISO(r.request_date), 'MMM d, yyyy')}</span>
+                </p>
+                <p className="text-xs text-gray-600 mt-0.5">
+                  {r.type === 'both' ? 'Missed punch in & out' : r.type === 'check_in' ? 'Missed punch in' : 'Missed punch out'}
+                  {describe(r) ? ` — ${describe(r)}` : ''}
+                </p>
+                <p className="text-xs text-gray-500 mt-1 italic">"{r.reason}"</p>
+              </div>
+              <div className="flex gap-2 flex-shrink-0">
+                <button
+                  onClick={() => void decide(r, 'rejected')}
+                  disabled={busyId === r.id}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 disabled:opacity-60"
+                >
+                  Reject
+                </button>
+                <button
+                  onClick={() => void decide(r, 'approved')}
+                  disabled={busyId === r.id}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-60"
+                >
+                  {busyId === r.id ? 'Saving…' : 'Approve'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {reviewed.length > 0 && (
+        <div className="border-t border-gray-100">
+          <button
+            onClick={() => setShowHistory(h => !h)}
+            className="w-full px-5 py-2.5 text-xs font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-50 text-left"
+          >
+            {showHistory ? 'Hide' : 'Show'} recently reviewed ({reviewed.length})
+          </button>
+          {showHistory && (
+            <div className="divide-y divide-gray-50">
+              {reviewed.map(r => (
+                <div key={r.id} className="px-5 py-3 flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-700">
+                      {r.profile?.full_name ?? 'Staff'} · {format(parseISO(r.request_date), 'MMM d')}
+                      {describe(r) ? ` — ${describe(r)}` : ''}
+                    </p>
+                    {r.reviewer?.full_name && (
+                      <p className="text-xs text-gray-400 mt-0.5">by {r.reviewer.full_name}</p>
+                    )}
+                  </div>
+                  <Badge variant={r.status === 'approved' ? 'success' : 'danger'} size="sm">{r.status}</Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </Card>
   )
 }

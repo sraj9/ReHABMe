@@ -24,14 +24,41 @@ export interface Attendance {
   profile_id: string
   check_in_at: string
   check_out_at?: string
-  lat: number
-  lng: number
+  lat?: number | null
+  lng?: number | null
   accuracy_m?: number
   check_out_lat?: number
   check_out_lng?: number
+  /** Entered via an approved regularization request rather than a GPS punch */
+  is_regularized?: boolean
   created_at: string
   // Joined fields
   profile?: StaffProfile
+}
+
+export type AttendanceRequestType = 'check_in' | 'check_out' | 'both'
+export type AttendanceRequestStatus = 'pending' | 'approved' | 'rejected'
+
+/** Staff request to fix a missed punch in/out; an admin approves or rejects it. */
+export interface AttendanceRequest {
+  id: string
+  profile_id: string
+  /** Set when regularizing the check-out of an existing attendance row */
+  attendance_id?: string | null
+  request_date: string
+  type: AttendanceRequestType
+  requested_check_in_at?: string | null
+  requested_check_out_at?: string | null
+  reason: string
+  status: AttendanceRequestStatus
+  review_note?: string | null
+  reviewed_by?: string | null
+  reviewed_at?: string | null
+  created_at: string
+  updated_at: string
+  // Joined fields
+  profile?: StaffProfile
+  reviewer?: StaffProfile
 }
 
 export interface ClinicSettings {
