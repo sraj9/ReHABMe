@@ -1,13 +1,16 @@
 import { useState } from 'react'
-import { Play } from 'lucide-react'
+import { format, parseISO } from 'date-fns'
+import { CalendarCheck, Play } from 'lucide-react'
 import Button from './ui/Button'
 import { usePatientsContext } from '../context/PatientsContext'
 import { usePackagesContext } from '../context/PackagesContext'
 import { useSessionsContext } from '../context/SessionsContext'
+import { useAppointmentsContext } from '../context/AppointmentsContext'
 import { useStaffContext } from '../context/StaffContext'
 import { useToast } from '../context/ToastContext'
 import { useAuth } from '../hooks/useAuth'
 import { activePackageFor, sessionsRemaining } from '../lib/packages'
+import { followUpBooking, formatSlot, hasBookingOn } from '../lib/scheduling'
 
 interface StartSessionModalProps {
   onClose: () => void
@@ -20,17 +23,23 @@ export default function StartSessionModal({ onClose, defaultPatientId }: StartSe
   const { packages } = usePackagesContext()
   const { sessions, addSession, deleteSession } = useSessionsContext()
   const { staff } = useStaffContext()
+  const { appointments, addAppointment } = useAppointmentsContext()
   const { profile } = useAuth()
   const toast = useToast()
 
   const [patientId, setPatientId] = useState(defaultPatientId ?? '')
   const [therapistId, setTherapistId] = useState(profile?.role === 'therapist' ? profile.id : '')
   const [notes, setNotes] = useState('')
+  // Follow-up is booked for the next working day at the same time (Sunday is off)
+  const [bookFollowUp, setBookFollowUp] = useState(true)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
   const activePackage = patientId ? activePackageFor(patientId, packages, sessions) : undefined
   const remaining = activePackage ? sessionsRemaining(activePackage, sessions) : 0
+
+  const followUp = followUpBooking(new Date(), appointments)
+  const alreadyBooked = !!(patientId && followUp && hasBookingOn(patientId, followUp.date, appointments))
 
   // One session per patient per day (also enforced by the database)
   const todayKey = new Date().toDateString()
@@ -68,6 +77,32 @@ export default function StartSessionModal({ onClose, defaultPatientId }: StartSe
       setError('Could not log the session — the patient may already have one today.')
       return
     }
+    // Book the next visit so the patient leaves with a slot already held
+    if (bookFollowUp && followUp && !alreadyBooked && patient) {
+      const booked = await addAppointment({
+        id: crypto.randomUUID(),
+        patient_id: patientId,
+        therapist_id: therapistId || '',
+        appointment_date: followUp.date,
+        appointment_time: followUp.time,
+        duration_minutes: 30,
+        type: 'follow_up',
+        status: 'scheduled',
+        reason: 'Auto-booked follow-up after session',
+        created_at: now,
+        updated_at: now,
+        patient,
+        therapist,
+      })
+      if (booked) {
+        toast.success(
+          `Follow-up booked — ${patient.full_name} on ${format(parseISO(followUp.date), 'EEE, MMM d')} at ${formatSlot(followUp.time)}`
+        )
+      } else {
+        toast.error('Session logged, but the follow-up appointment could not be booked')
+      }
+    }
+
     const undo = {
       label: 'Undo',
       onClick: () => {
@@ -158,6 +193,33 @@ export default function StartSessionModal({ onClose, defaultPatientId }: StartSe
               ))}
             </select>
           </div>
+          {patientId && !sessionToday && (
+            <label className={`flex items-start gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer ${
+              bookFollowUp && followUp && !alreadyBooked ? 'border-[#3d9cd6]/30 bg-[#3d9cd6]/5' : 'border-gray-200 bg-gray-50'
+            }`}>
+              <input
+                type="checkbox"
+                checked={bookFollowUp}
+                disabled={!followUp || alreadyBooked}
+                onChange={e => setBookFollowUp(e.target.checked)}
+                className="mt-0.5 rounded border-gray-300 accent-[#3d9cd6]"
+              />
+              <span className="flex-1">
+                <span className="flex items-center gap-1.5 text-sm font-medium text-gray-800">
+                  <CalendarCheck size={14} className="text-[#3d9cd6]" />
+                  Book next visit
+                </span>
+                <span className="block text-xs text-gray-500 mt-0.5">
+                  {alreadyBooked
+                    ? 'Already has an appointment that day — nothing will be booked'
+                    : followUp
+                      ? `${format(parseISO(followUp.date), 'EEEE, MMM d')} at ${formatSlot(followUp.time)}${new Date(followUp.date).getDay() === 1 ? ' (Sunday is week off)' : ''}`
+                      : 'No free slot on the next working day'}
+                </span>
+              </span>
+            </label>
+          )}
+
           <div>
             <label htmlFor="session-notes" className={labelClass}>Notes</label>
             <input id="session-notes" className={fieldClass} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional remark for this visit…" />

@@ -61,10 +61,16 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
   const { requests } = useAttendanceRequestsContext()
   const [showRegularize, setShowRegularize] = useState(false)
 
-  // A session without a check-out means this person is currently checked in
-  const openSession = profile
-    ? attendance.find(a => a.profile_id === profile.id && !a.check_out_at)
-    : undefined
+  // Only an open entry from TODAY means this person is currently checked in.
+  // A forgotten punch-out from an earlier day must not be closed with today's
+  // time (that produced 20h+ entries) — it stays open for regularization and
+  // the button offers a fresh check-in instead.
+  const myOpenEntries = profile
+    ? attendance.filter(a => a.profile_id === profile.id && !a.check_out_at)
+    : []
+  const todayStr = format(new Date(), 'yyyy-MM-dd')
+  const openSession = myOpenEntries.find(a => a.check_in_at.startsWith(todayStr))
+  const staleOpenEntry = myOpenEntries.find(a => !a.check_in_at.startsWith(todayStr))
 
   const handleCheckInOut = () => {
     if (!profile) return
@@ -185,7 +191,13 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
               ? 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
               : 'bg-[#3d9cd6]/10 text-[#1e7ab4] border border-[#3d9cd6]/20 hover:bg-[#3d9cd6]/20'
           }`}
-          title={openSession ? `Checked in at ${format(new Date(openSession.check_in_at), 'h:mm a')}` : 'Check in with your location for attendance'}
+          title={
+            openSession
+              ? `Checked in at ${format(new Date(openSession.check_in_at), 'h:mm a')}`
+              : staleOpenEntry
+                ? `You have a missed punch out from ${format(parseISO(staleOpenEntry.check_in_at), 'MMM d')} — request regularization for it. This will start a new check-in.`
+                : 'Check in with your location for attendance'
+          }
         >
           <MapPin size={13} />
           {locating ? 'Getting location…' : openSession ? 'Check Out' : 'Check In'}
@@ -194,11 +206,16 @@ export default function Header({ onToggleSidebar }: HeaderProps) {
         {profile?.role !== 'admin' && (
           <button
             onClick={() => setShowRegularize(true)}
-            className="p-2 rounded-lg text-gray-400 hover:text-[#3d9cd6] hover:bg-[#3d9cd6]/10 transition-colors"
-            title="Missed a punch in/out? Request regularization"
+            className="relative p-2 rounded-lg text-gray-400 hover:text-[#3d9cd6] hover:bg-[#3d9cd6]/10 transition-colors"
+            title={staleOpenEntry
+              ? `Missed punch out on ${format(parseISO(staleOpenEntry.check_in_at), 'MMM d')} — request regularization`
+              : 'Missed a punch in/out? Request regularization'}
             aria-label="Request attendance regularization"
           >
             <ClockAlert size={17} />
+            {staleOpenEntry && (
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-amber-500 rounded-full" />
+            )}
           </button>
         )}
 

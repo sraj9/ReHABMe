@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { format, parseISO } from 'date-fns'
-import { Plus, Search, CalendarDays, Clock, Filter, Trash2, List } from 'lucide-react'
+import { addDays, format, parseISO } from 'date-fns'
+import { Plus, Search, CalendarDays, Clock, Filter, Trash2, List, CalendarSearch, ChevronLeft, ChevronRight } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import Badge, { getAppointmentStatusBadge } from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
@@ -12,6 +12,7 @@ import { useAppointmentsContext } from '../../context/AppointmentsContext'
 import { usePatientsContext } from '../../context/PatientsContext'
 import { useStaffContext } from '../../context/StaffContext'
 import { useToast } from '../../context/ToastContext'
+import { availability, formatSlot, isWeeklyOff, nextWorkingDay, SLOT_CAPACITY } from '../../lib/scheduling'
 import type { Appointment, AppointmentStatus, AppointmentType } from '../../lib/types'
 
 const PAGE_SIZE = 15
@@ -38,6 +39,10 @@ export default function AppointmentList() {
   const [showForm, setShowForm] = useState(() => searchParams.get('new') === '1')
   const [editAppointment, setEditAppointment] = useState<Appointment | undefined>(undefined)
   const [view, setView] = useState<'list' | 'calendar'>('list')
+  // Free-slot finder, for placing a new patient. Defaults to the next working day.
+  const [showSlots, setShowSlots] = useState(false)
+  const [slotDay, setSlotDay] = useState(() => format(nextWorkingDay(new Date()), 'yyyy-MM-dd'))
+  const [slotPrefillTime, setSlotPrefillTime] = useState<string | undefined>(undefined)
   const [page, setPage] = useState(1)
   const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null)
   const [prefill, setPrefill] = useState<{ patientId?: string; date?: string }>(() =>
@@ -155,6 +160,13 @@ export default function AppointmentList() {
               Calendar
             </button>
           </div>
+          <Button
+            variant="outline"
+            icon={<CalendarSearch size={15} />}
+            onClick={() => setShowSlots(v => !v)}
+          >
+            {showSlots ? 'Hide Slots' : 'Find Slot'}
+          </Button>
           <Button icon={<Plus size={16} />} onClick={handleOpenNew}>
             New Appointment
           </Button>
@@ -355,6 +367,21 @@ export default function AppointmentList() {
       </Card>
       )}
 
+      {/* Free slot finder */}
+      {showSlots && (
+        <SlotFinder
+          day={slotDay}
+          onDayChange={setSlotDay}
+          appointments={appointments}
+          onPick={(date, time) => {
+            setPrefill({ date })
+            setSlotPrefillTime(time)
+            setShowForm(true)
+          }}
+          onClose={() => setShowSlots(false)}
+        />
+      )}
+
       {/* Delete confirmation */}
       <ConfirmDialog
         open={!!deleteTarget}
@@ -371,11 +398,13 @@ export default function AppointmentList() {
             setShowForm(false)
             setEditAppointment(undefined)
             setPrefill({})
+            setSlotPrefillTime(undefined)
             if (searchParams.get('new')) setSearchParams({}, { replace: true })
           }}
           editAppointment={editAppointment}
           defaultPatientId={prefill.patientId}
           defaultDate={prefill.date}
+          defaultTime={slotPrefillTime}
         />
       )}
     </div>
@@ -387,9 +416,10 @@ interface AppointmentFormModalProps {
   editAppointment?: Appointment
   defaultPatientId?: string
   defaultDate?: string
+  defaultTime?: string
 }
 
-function AppointmentFormModal({ onClose, editAppointment, defaultPatientId, defaultDate }: AppointmentFormModalProps) {
+function AppointmentFormModal({ onClose, editAppointment, defaultPatientId, defaultDate, defaultTime }: AppointmentFormModalProps) {
   const { addAppointment, updateAppointment } = useAppointmentsContext()
   const { patients } = usePatientsContext()
   const { staff } = useStaffContext()
@@ -401,7 +431,7 @@ function AppointmentFormModal({ onClose, editAppointment, defaultPatientId, defa
     patient_id: editAppointment?.patient_id ?? defaultPatientId ?? '',
     therapist_id: editAppointment?.therapist_id ?? '',
     appointment_date: editAppointment?.appointment_date ?? defaultDate ?? '',
-    appointment_time: editAppointment?.appointment_time ?? '',
+    appointment_time: editAppointment?.appointment_time ?? defaultTime ?? '',
     duration_minutes: String(editAppointment?.duration_minutes ?? '60'),
     type: editAppointment?.type ?? 'physiotherapy',
     status: editAppointment?.status ?? 'scheduled',
@@ -573,5 +603,101 @@ function AppointmentFormModal({ onClose, editAppointment, defaultPatientId, defa
         </div>
       </div>
     </div>
+  )
+}
+
+// ============================================================
+// FREE SLOT FINDER
+// Which times still have room on a given day — Sunday is the clinic's
+// weekly off, so it offers no slots.
+// ============================================================
+interface SlotFinderProps {
+  day: string
+  onDayChange: (day: string) => void
+  appointments: Appointment[]
+  onPick: (date: string, time: string) => void
+  onClose: () => void
+}
+
+function SlotFinder({ day, onDayChange, appointments, onPick, onClose }: SlotFinderProps) {
+  const date = parseISO(`${day}T00:00:00`)
+  const weekOff = isWeeklyOff(date)
+  const shifts = availability(day, appointments)
+  const totalFree = shifts.reduce((sum, sh) => sum + sh.slots.reduce((n, s) => n + s.free, 0), 0)
+
+  const shift = (delta: number) => onDayChange(format(addDays(date, delta), 'yyyy-MM-dd'))
+
+  return (
+    <Card padding="none">
+      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">Available Slots</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {weekOff
+              ? 'Sunday — clinic closed'
+              : `${totalFree} openings on ${format(date, 'EEEE, MMM d')} · up to ${SLOT_CAPACITY} patients per slot`}
+          </p>
+        </div>
+        <div className="flex items-center gap-1">
+          <button onClick={() => shift(-1)} aria-label="Previous day" className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">
+            <ChevronLeft size={15} />
+          </button>
+          <input
+            type="date"
+            aria-label="Slot date"
+            value={day}
+            onChange={e => onDayChange(e.target.value)}
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3d9cd6]"
+          />
+          <button onClick={() => shift(1)} aria-label="Next day" className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">
+            <ChevronRight size={15} />
+          </button>
+          <button onClick={onClose} aria-label="Hide slots" className="ml-1 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">✕</button>
+        </div>
+      </div>
+
+      {weekOff ? (
+        <div className="px-5 py-10 text-center text-sm text-gray-500">
+          The clinic is closed on Sundays — pick another day.
+        </div>
+      ) : (
+        <div className="px-5 py-4 space-y-4">
+          {shifts.map(sh => (
+            <div key={sh.label}>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{sh.label}</p>
+              <div className="flex flex-wrap gap-2">
+                {sh.slots.map(s => {
+                  const full = s.free === 0
+                  return (
+                    <button
+                      key={s.time}
+                      onClick={() => !full && onPick(day, s.time)}
+                      disabled={full}
+                      title={
+                        full
+                          ? `Full — ${s.appointments.map(a => a.patient?.full_name ?? 'patient').join(', ')}`
+                          : `${s.free} of ${SLOT_CAPACITY} free — click to book`
+                      }
+                      className={`px-3 py-2 rounded-lg border text-xs font-medium transition-colors ${
+                        full
+                          ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed line-through'
+                          : s.booked > 0
+                            ? 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                            : 'border-[#3d9cd6]/30 bg-[#3d9cd6]/5 text-[#1e7ab4] hover:bg-[#3d9cd6]/15'
+                      }`}
+                    >
+                      {formatSlot(s.time)}
+                      <span className="block text-[10px] font-normal opacity-70">
+                        {full ? 'full' : `${s.free} free`}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   )
 }
