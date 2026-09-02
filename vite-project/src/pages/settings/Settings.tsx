@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { format, parseISO, differenceInMinutes } from 'date-fns'
 import {
   Users, Plus, Shield, Building2, CheckCircle, Edit, Trash2, KeyRound,
-  MessageCircle, MapPin, Send, ExternalLink, Wallet, CalendarOff,
+  MessageCircle, MapPin, Send, ExternalLink, Wallet, CalendarOff, ClockAlert,
 } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import Badge from '../../components/ui/Badge'
@@ -13,6 +13,7 @@ import { useStaffContext } from '../../context/StaffContext'
 import { useAttendanceContext } from '../../context/AttendanceContext'
 import { useAttendanceRequestsContext } from '../../context/AttendanceRequestsContext'
 import { useHolidaysContext } from '../../context/HolidaysContext'
+import RegularizeAttendanceModal from '../../components/RegularizeAttendanceModal'
 import { payoutFor } from '../../lib/payroll'
 import { formatCurrency } from '../../lib/format'
 import { useToast } from '../../context/ToastContext'
@@ -40,7 +41,7 @@ export default function Settings() {
 
   const tabs: { key: SettingsTab; label: string; icon: typeof Users; adminOnly?: boolean }[] = [
     { key: 'staff', label: 'Staff Management', icon: Users },
-    { key: 'attendance', label: 'Attendance', icon: MapPin, adminOnly: true },
+    { key: 'attendance', label: isAdmin ? 'Attendance' : 'My Attendance', icon: MapPin },
     { key: 'payroll', label: 'Payroll', icon: Wallet, adminOnly: true },
     { key: 'clinic', label: 'Clinic Settings', icon: Building2, adminOnly: true },
     { key: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, adminOnly: true },
@@ -64,7 +65,7 @@ export default function Settings() {
       </div>
 
       {activeTab === 'staff' && <StaffTab isAdmin={isAdmin} />}
-      {activeTab === 'attendance' && isAdmin && <AttendanceTab />}
+      {activeTab === 'attendance' && <AttendanceTab isAdmin={isAdmin} />}
       {activeTab === 'payroll' && isAdmin && <PayrollTab />}
       {activeTab === 'clinic' && isAdmin && <ClinicTab />}
       {activeTab === 'whatsapp' && isAdmin && <WhatsAppTab />}
@@ -851,11 +852,16 @@ function HolidayManager({ month }: { month: string }) {
 // ============================================================
 // ATTENDANCE (admin)
 // ============================================================
-function AttendanceTab() {
+function AttendanceTab({ isAdmin }: { isAdmin: boolean }) {
   const { attendance, loading } = useAttendanceContext()
+  const { profile } = useAuth()
   const [dateFilter, setDateFilter] = useState('')
+  const [showRegularize, setShowRegularize] = useState(false)
 
-  const filtered = attendance.filter(a => !dateFilter || a.check_in_at.startsWith(dateFilter))
+  // Therapists see only their own punches (the database enforces this too);
+  // admins see the whole clinic.
+  const visible = isAdmin ? attendance : attendance.filter(a => a.profile_id === profile?.id)
+  const filtered = visible.filter(a => !dateFilter || a.check_in_at.startsWith(dateFilter))
 
   /** Minutes worked in one entry; an open (not-yet-checked-out) entry counts 0. */
   const entryMinutes = (a: Attendance): number =>
@@ -877,12 +883,16 @@ function AttendanceTab() {
 
   return (
     <div className="space-y-5">
-    <RegularizationQueue />
+    {isAdmin ? <RegularizationQueue /> : <MyRequestsPanel onRaise={() => setShowRegularize(true)} />}
     <Card padding="none">
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h3 className="text-sm font-semibold text-gray-900">Staff Attendance</h3>
-          <p className="text-xs text-gray-500 mt-0.5">Daily totals across all punches — GPS check-ins plus approved regularizations</p>
+          <h3 className="text-sm font-semibold text-gray-900">{isAdmin ? 'Staff Attendance' : 'My Punch History'}</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {isAdmin
+              ? 'Daily totals across all punches — GPS check-ins plus approved regularizations'
+              : 'Your check-ins and check-outs, with hours totalled per day'}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <label htmlFor="attendance-date" className="text-xs font-medium text-gray-500">Date</label>
@@ -895,7 +905,11 @@ function AttendanceTab() {
 
       {days.length === 0 ? (
         <div className="px-5 py-12 text-center text-sm text-gray-500">
-          {loading ? 'Loading attendance…' : 'No attendance records yet — staff check in from the button in the header'}
+          {loading
+            ? 'Loading attendance…'
+            : isAdmin
+              ? 'No attendance records yet — staff check in from the button in the header'
+              : 'No punches recorded yet — use the Check In button in the header'}
         </div>
       ) : (
         <div className="divide-y divide-gray-100">
@@ -998,7 +1012,54 @@ function AttendanceTab() {
         </div>
       )}
     </Card>
+    {showRegularize && <RegularizeAttendanceModal onClose={() => setShowRegularize(false)} />}
     </div>
+  )
+}
+
+// ============================================================
+// MY REGULARIZATION REQUESTS (therapist view)
+// ============================================================
+function MyRequestsPanel({ onRaise }: { onRaise: () => void }) {
+  const { requests } = useAttendanceRequestsContext()
+  const { profile } = useAuth()
+  const mine = requests.filter(r => r.profile_id === profile?.id)
+  const pending = mine.filter(r => r.status === 'pending').length
+
+  return (
+    <Card padding="none">
+      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">My Regularization Requests</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {pending > 0 ? `${pending} waiting for admin approval` : 'Missed a punch? Raise a request for admin approval'}
+          </p>
+        </div>
+        <Button variant="outline" icon={<ClockAlert size={14} />} onClick={onRaise}>
+          Request
+        </Button>
+      </div>
+      {mine.length === 0 ? (
+        <div className="px-5 py-6 text-center text-sm text-gray-500">No requests raised yet</div>
+      ) : (
+        <div className="divide-y divide-gray-50">
+          {mine.slice(0, 8).map(r => (
+            <div key={r.id} className="px-5 py-3 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-gray-800">
+                  {format(parseISO(r.request_date), 'MMM d, yyyy')} —{' '}
+                  {r.type === 'both' ? 'punch in & out' : r.type === 'check_in' ? 'punch in' : 'punch out'}
+                </p>
+                <p className="text-xs text-gray-500 italic truncate">"{r.reason}"</p>
+              </div>
+              <Badge variant={r.status === 'approved' ? 'success' : r.status === 'rejected' ? 'danger' : 'warning'} size="sm">
+                {r.status}
+              </Badge>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   )
 }
 
