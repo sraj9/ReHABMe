@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { format, parseISO, differenceInYears } from 'date-fns'
 import {
-  ArrowLeft, Edit, Calendar, FileText, Receipt,
+  ArrowLeft, Edit, Calendar, FileText, Receipt, IndianRupee,
   Phone, Mail, MapPin, AlertCircle, Pill, Shield,
   User, UserPlus, Stethoscope, CalendarDays, Pencil, Trash2, Undo2
 } from 'lucide-react'
@@ -22,6 +22,7 @@ import { sessionsRemaining } from '../../lib/packages'
 import StartSessionModal from '../../components/StartSessionModal'
 import AssignPackageModal from '../../components/AssignPackageModal'
 import EditSessionModal from '../../components/EditSessionModal'
+import DailyPaymentModal from '../../components/DailyPaymentModal'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import { useAuth } from '../../hooks/useAuth'
 import { useToast } from '../../context/ToastContext'
@@ -44,6 +45,7 @@ export default function PatientDetail() {
   const [showAssignPackage, setShowAssignPackage] = useState(false)
   const [editSession, setEditSession] = useState<PatientSession | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<PatientSession | null>(null)
+  const [showDailyPayment, setShowDailyPayment] = useState(false)
   // Ticks while the Sessions tab is open so the 1-minute undo window closes visibly
   const [nowMs, setNowMs] = useState(() => Date.now())
 
@@ -546,9 +548,14 @@ export default function PatientDetail() {
         <Card padding="none">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-900">Invoice History</h3>
-            <Button size="sm" icon={<Receipt size={14} />} onClick={() => navigate(`/billing?new=1&patient=${id}`)}>
-              Create Invoice
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" icon={<IndianRupee size={14} />} onClick={() => setShowDailyPayment(true)}>
+                Daily Payment
+              </Button>
+              <Button size="sm" icon={<Receipt size={14} />} onClick={() => navigate(`/billing?new=1&patient=${id}`)}>
+                Create Invoice
+              </Button>
+            </div>
           </div>
           {patientInvoices.length === 0 ? (
             <div className="py-12 text-center text-sm text-gray-500">No invoices found</div>
@@ -596,6 +603,10 @@ export default function PatientDetail() {
           )}
         </Card>
         </div>
+      )}
+
+      {showDailyPayment && (
+        <DailyPaymentModal defaultPatientId={patient.id} onClose={() => setShowDailyPayment(false)} />
       )}
 
       {/* Session editing (admin) */}
