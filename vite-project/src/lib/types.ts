@@ -192,7 +192,8 @@ export type ExpenseCategory = 'rent' | 'salaries' | 'equipment' | 'supplies' | '
 
 export interface Payment {
   id: string
-  invoice_id: string
+  /** null for a daily (walk-in) payment with no invoice behind it */
+  invoice_id: string | null
   patient_id: string
   amount: number
   method: PaymentMethod

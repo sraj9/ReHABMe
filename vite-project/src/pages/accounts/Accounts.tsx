@@ -12,6 +12,7 @@ import Pagination from '../../components/ui/Pagination'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import RecordPaymentModal from '../../components/RecordPaymentModal'
 import InvoicePickerModal from '../../components/InvoicePickerModal'
+import DailyPaymentModal from '../../components/DailyPaymentModal'
 import AccountsChart, { type MonthlyMoney } from './AccountsChart'
 import { usePaymentsContext } from '../../context/PaymentsContext'
 import { useExpensesContext } from '../../context/ExpensesContext'
@@ -155,6 +156,7 @@ function PaymentsTab() {
   const toast = useToast()
   const [page, setPage] = useState(1)
   const [showPicker, setShowPicker] = useState(false)
+  const [showDailyPayment, setShowDailyPayment] = useState(false)
   const [paymentTarget, setPaymentTarget] = useState<Invoice | null>(null)
   const [voidTarget, setVoidTarget] = useState<Payment | null>(null)
 
@@ -220,7 +222,9 @@ function PaymentsTab() {
                   <tr key={payment.id} className={payment.voided ? 'opacity-60' : ''}>
                     <td className="px-5 py-3.5 text-sm text-gray-600">{format(parseISO(payment.paid_at), 'MMM d, yyyy')}</td>
                     <td className="px-5 py-3.5 text-sm font-medium text-gray-900">{payment.patient?.full_name ?? '—'}</td>
-                    <td className="px-5 py-3.5 text-sm text-[#3d9cd6]">{payment.invoice?.invoice_number ?? '—'}</td>
+                    <td className="px-5 py-3.5 text-sm text-[#3d9cd6]">
+                      {payment.invoice?.invoice_number ?? <Badge variant="warning" size="sm">Daily</Badge>}
+                    </td>
                     <td className="px-5 py-3.5"><Badge variant="default">{methodLabels[payment.method]}</Badge></td>
                     <td className="px-5 py-3.5 text-sm text-gray-600">{payment.receiver?.full_name ?? '—'}</td>
                     <td className={`px-5 py-3.5 text-sm font-semibold text-gray-900 text-right ${payment.voided ? 'line-through' : ''}`}>{formatCurrency(payment.amount)}</td>
@@ -252,11 +256,15 @@ function PaymentsTab() {
         <InvoicePickerModal
           onClose={() => setShowPicker(false)}
           onSelect={invoice => { setShowPicker(false); setPaymentTarget(invoice) }}
+          onDailyPayment={() => { setShowPicker(false); setShowDailyPayment(true) }}
         />
       )}
 
       {paymentTarget && (
         <RecordPaymentModal invoice={paymentTarget} onClose={() => setPaymentTarget(null)} />
+      )}
+      {showDailyPayment && (
+        <DailyPaymentModal onClose={() => setShowDailyPayment(false)} />
       )}
 
       <ConfirmDialog

@@ -7,6 +7,7 @@ import Card, { CardHeader } from '../components/ui/Card'
 import Badge, { getAppointmentStatusBadge } from '../components/ui/Badge'
 import RecordPaymentModal from '../components/RecordPaymentModal'
 import InvoicePickerModal from '../components/InvoicePickerModal'
+import DailyPaymentModal from '../components/DailyPaymentModal'
 import StartSessionModal from '../components/StartSessionModal'
 import { formatCurrency } from '../lib/format'
 import { deriveRecentActivity } from '../lib/activity'
@@ -24,6 +25,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const today = format(new Date(), 'yyyy-MM-dd')
   const [showPicker, setShowPicker] = useState(false)
+  const [showDailyPayment, setShowDailyPayment] = useState(false)
   const [paymentTarget, setPaymentTarget] = useState<Invoice | null>(null)
   const [showStartSession, setShowStartSession] = useState(false)
 
@@ -380,10 +382,14 @@ export default function Dashboard() {
         <InvoicePickerModal
           onClose={() => setShowPicker(false)}
           onSelect={invoice => { setShowPicker(false); setPaymentTarget(invoice) }}
+          onDailyPayment={() => { setShowPicker(false); setShowDailyPayment(true) }}
         />
       )}
       {paymentTarget && (
         <RecordPaymentModal invoice={paymentTarget} onClose={() => setPaymentTarget(null)} />
+      )}
+      {showDailyPayment && (
+        <DailyPaymentModal onClose={() => setShowDailyPayment(false)} />
       )}
       {showStartSession && (
         <StartSessionModal onClose={() => setShowStartSession(false)} />
