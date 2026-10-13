@@ -4,7 +4,7 @@ import { format, parseISO, differenceInYears } from 'date-fns'
 import {
   ArrowLeft, Edit, Calendar, FileText, Receipt, IndianRupee,
   Phone, Mail, MapPin, AlertCircle, Pill, Shield,
-  User, UserPlus, Stethoscope, CalendarDays, Pencil, Trash2, Undo2
+  User, UserPlus, Stethoscope, CalendarDays, Pencil, Trash2, Undo2, UserX, UserCheck
 } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import Badge, { getAppointmentStatusBadge } from '../../components/ui/Badge'
@@ -23,11 +23,12 @@ import StartSessionModal from '../../components/StartSessionModal'
 import AssignPackageModal from '../../components/AssignPackageModal'
 import EditSessionModal from '../../components/EditSessionModal'
 import DailyPaymentModal from '../../components/DailyPaymentModal'
+import EditPaymentModal from '../../components/EditPaymentModal'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import { useAuth } from '../../hooks/useAuth'
 import { useToast } from '../../context/ToastContext'
 import PainTrendChart from './PainTrendChart'
-import type { PatientSession, PaymentMethod } from '../../lib/types'
+import type { Payment, PatientSession, PaymentMethod } from '../../lib/types'
 
 const paymentMethodLabels: Record<PaymentMethod, string> = {
   cash: 'Cash',
@@ -46,10 +47,12 @@ export default function PatientDetail() {
   const [editSession, setEditSession] = useState<PatientSession | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<PatientSession | null>(null)
   const [showDailyPayment, setShowDailyPayment] = useState(false)
+  const [editPayment, setEditPayment] = useState<Payment | null>(null)
+  const [togglingActive, setTogglingActive] = useState(false)
   // Ticks while the Sessions tab is open so the 1-minute undo window closes visibly
   const [nowMs, setNowMs] = useState(() => Date.now())
 
-  const { patients } = usePatientsContext()
+  const { patients, updatePatient } = usePatientsContext()
   const { appointments } = useAppointmentsContext()
   const { notes } = useNotesContext()
   const { invoices } = useInvoicesContext()
@@ -83,6 +86,18 @@ export default function PatientDetail() {
   }
 
   const patient = patients.find(p => p.id === id)
+
+  const handleToggleActive = async () => {
+    if (!patient) return
+    setTogglingActive(true)
+    const result = await updatePatient({ ...patient, is_active: !patient.is_active, updated_at: new Date().toISOString() })
+    setTogglingActive(false)
+    if (result) {
+      toast.success(`${patient.full_name} marked ${result.is_active ? 'active' : 'inactive'}`)
+    } else {
+      toast.error('Could not update the patient status')
+    }
+  }
   const patientAppointments = appointments.filter(a => a.patient_id === id)
   const patientNotes = notes.filter(n => n.patient_id === id)
   const patientInvoices = invoices.filter(i => i.patient_id === id)
@@ -141,6 +156,14 @@ export default function PatientDetail() {
         <div className="flex gap-2">
           <Button variant="outline" icon={<Calendar size={15} />} onClick={() => navigate(`/appointments?new=1&patient=${id}`)}>
             Schedule
+          </Button>
+          <Button
+            variant="outline"
+            loading={togglingActive}
+            icon={patient.is_active ? <UserX size={15} /> : <UserCheck size={15} />}
+            onClick={handleToggleActive}
+          >
+            {patient.is_active ? 'Mark Inactive' : 'Reactivate'}
           </Button>
           <Button icon={<Edit size={15} />} onClick={() => navigate(`/patients/${id}/edit`)}>
             Edit Patient
@@ -597,6 +620,16 @@ export default function PatientDetail() {
                     </p>
                   </div>
                   <Badge variant={payment.voided ? 'danger' : 'success'} size="sm">{payment.voided ? 'wrong entry' : 'received'}</Badge>
+                  {isAdmin && !payment.voided && (
+                    <button
+                      onClick={() => setEditPayment(payment)}
+                      aria-label="Edit payment"
+                      title="Edit payment"
+                      className="p-1 text-gray-400 hover:text-[#3d9cd6] transition-colors rounded"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -607,6 +640,9 @@ export default function PatientDetail() {
 
       {showDailyPayment && (
         <DailyPaymentModal defaultPatientId={patient.id} onClose={() => setShowDailyPayment(false)} />
+      )}
+      {editPayment && (
+        <EditPaymentModal payment={editPayment} onClose={() => setEditPayment(null)} />
       )}
 
       {/* Session editing (admin) */}

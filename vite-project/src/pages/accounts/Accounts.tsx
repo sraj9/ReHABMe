@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { format, parseISO, subMonths, isSameMonth } from 'date-fns'
 import {
-  IndianRupee, TrendingUp, TrendingDown, Wallet, Plus, Trash2, Receipt, LayoutGrid, Ban,
+  IndianRupee, TrendingUp, TrendingDown, Wallet, Plus, Trash2, Receipt, LayoutGrid, Ban, Pencil,
 } from 'lucide-react'
 import Card from '../../components/ui/Card'
 import Badge from '../../components/ui/Badge'
@@ -13,6 +13,7 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import RecordPaymentModal from '../../components/RecordPaymentModal'
 import InvoicePickerModal from '../../components/InvoicePickerModal'
 import DailyPaymentModal from '../../components/DailyPaymentModal'
+import EditPaymentModal from '../../components/EditPaymentModal'
 import AccountsChart, { type MonthlyMoney } from './AccountsChart'
 import { usePaymentsContext } from '../../context/PaymentsContext'
 import { useExpensesContext } from '../../context/ExpensesContext'
@@ -159,6 +160,7 @@ function PaymentsTab() {
   const [showDailyPayment, setShowDailyPayment] = useState(false)
   const [paymentTarget, setPaymentTarget] = useState<Invoice | null>(null)
   const [voidTarget, setVoidTarget] = useState<Payment | null>(null)
+  const [editTarget, setEditTarget] = useState<Payment | null>(null)
 
   const confirmVoid = async () => {
     if (!voidTarget) return
@@ -232,14 +234,24 @@ function PaymentsTab() {
                       {payment.voided ? (
                         <Badge variant="danger" size="sm">wrong entry</Badge>
                       ) : (
-                        <button
-                          onClick={() => setVoidTarget(payment)}
-                          aria-label="Mark as wrong entry"
-                          title="Mark as wrong entry"
-                          className="p-1 text-gray-400 hover:text-red-500 transition-colors rounded"
-                        >
-                          <Ban size={13} />
-                        </button>
+                        <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => setEditTarget(payment)}
+                            aria-label="Edit payment"
+                            title="Edit payment"
+                            className="p-1 text-gray-400 hover:text-[#3d9cd6] transition-colors rounded"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            onClick={() => setVoidTarget(payment)}
+                            aria-label="Mark as wrong entry"
+                            title="Mark as wrong entry"
+                            className="p-1 text-gray-400 hover:text-red-500 transition-colors rounded"
+                          >
+                            <Ban size={13} />
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -265,6 +277,9 @@ function PaymentsTab() {
       )}
       {showDailyPayment && (
         <DailyPaymentModal onClose={() => setShowDailyPayment(false)} />
+      )}
+      {editTarget && (
+        <EditPaymentModal payment={editTarget} onClose={() => setEditTarget(null)} />
       )}
 
       <ConfirmDialog
